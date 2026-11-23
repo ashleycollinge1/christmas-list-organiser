@@ -1,0 +1,40 @@
+# LOCAL DEVELOPMENT ONLY: builds the image from this checkout.
+# To deploy, use docker-compose.yml (pulls the pre-built image from GHCR).
+#   docker compose -f docker-compose.dev.yml up --build
+#   then open http://localhost:8000 (admin / change-me-please)
+name: christmas-list-organiser-dev
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: xmas
+      POSTGRES_PASSWORD: xmas-dev-password
+      POSTGRES_DB: xmas
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U xmas -d xmas"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  web:
+    build: .
+    image: christmas-list-organiser:dev
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_USER: xmas
+      POSTGRES_PASSWORD: xmas-dev-password
+      POSTGRES_DB: xmas
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: change-me-please
+      COOKIE_SECURE: "false"
+    ports:
+      - "${APP_BIND:-127.0.0.1}:${APP_PORT:-8000}:8000"
+
+volumes:
+  pgdata:

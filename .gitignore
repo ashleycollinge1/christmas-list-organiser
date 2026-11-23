@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+backups/
+data/
+.pytest_cache/
+.ruff_cache/
+
+# Private planning notes (kept locally, never committed)
+claude-instructions.md
+claude-ideas.md

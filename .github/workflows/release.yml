@@ -1,0 +1,104 @@
+name: Release
+
+# Push a tag like v1.2.0 to: test, build and push the image to GHCR, then
+# commit deploy/compose/docker-compose.v1.2.0.yml, docker-compose.latest.yml and
+# the root docker-compose.yml (all pinned to the image digest) back to stable.
+on:
+  push:
+    tags: ["v*.*.*"]
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+    with:
+      skip_docker: true
+    permissions:
+      contents: read
+
+  image:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+      image: ${{ steps.name.outputs.image }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: name
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-qemu-action@v4
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ steps.name.outputs.image }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short
+
+      - id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64,linux/arm64
+          build-args: APP_VERSION=${{ github.ref_name }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  compose:
+    needs: image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: stable
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Generate versioned compose file
+        run: |
+          python scripts/generate_compose.py \
+            --version "${GITHUB_REF_NAME}" \
+            --image "${{ needs.image.outputs.image }}" \
+            --digest "${{ needs.image.outputs.digest }}"
+
+      - name: Commit to stable
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add deploy/compose docker-compose.yml
+          if git diff --cached --quiet; then
+            echo "No compose changes to commit."
+            exit 0
+          fi
+          git commit -m "release: compose file for ${GITHUB_REF_NAME}"
+          for i in 1 2 3; do
+            git push origin HEAD:stable && exit 0
+            git pull --rebase origin stable
+          done
+          exit 1
