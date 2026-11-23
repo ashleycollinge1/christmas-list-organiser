@@ -1,4 +1,4 @@
-"""Admin dashboard: invites, categories, seasons and app settings."""
+"""Admin dashboard: invites, categories and app settings."""
 
 from __future__ import annotations
 
@@ -10,19 +10,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..common import active_season, all_settings, clean, season_out, set_setting, unprocessable
+from ..common import all_settings, clean, set_setting, unprocessable
 from ..config import settings
 from ..db import get_db
-from ..models import (
-    STATUS_IDEA,
-    Category,
-    Gift,
-    Invite,
-    Recipient,
-    RecipientShare,
-    Season,
-    User,
-)
+from ..models import Category, Invite, User
 from ..security import current_user, hash_token, require_admin
 
 router = APIRouter(prefix="/api", tags=["admin"])
@@ -159,110 +150,6 @@ def delete_category(cat_id: int, _: User = Depends(require_admin), db: Session =
     db.delete(cat)
     db.commit()
     return {"ok": True}
-
-
-# --------------------------------------------------------------------------- seasons
-
-
-class SeasonCreateIn(BaseModel):
-    name: str = Field(min_length=1, max_length=80)
-    copy_recipients: bool = True
-    copy_gifts: bool = False
-
-
-class SeasonPatchIn(BaseModel):
-    name: str = Field(min_length=1, max_length=80)
-
-
-@router.get("/seasons")
-def list_seasons(_: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
-    seasons = db.scalars(select(Season).order_by(Season.is_archived, Season.created_at.desc())).all()
-    return {"seasons": [season_out(s) for s in seasons]}
-
-
-def _copy_season(db: Session, source: Season, target: Season, copy_gifts: bool) -> None:
-    for r in db.scalars(select(Recipient).where(Recipient.season_id == source.id).order_by(Recipient.id)).all():
-        nr = Recipient(
-            season_id=target.id,
-            owner_id=r.owner_id,
-            name=r.name,
-            budget_pence=r.budget_pence,
-            notes=r.notes,
-            category_id=r.category_id,
-        )
-        nr.shares = [RecipientShare(user_id=s.user_id) for s in r.shares]
-        if copy_gifts:
-            # Order details belong to last year; the idea itself carries over.
-            nr.gifts = [
-                Gift(
-                    description=g.description,
-                    link=g.link,
-                    price_pence=g.price_pence,
-                    quantity=g.quantity,
-                    my_share_pence=g.my_share_pence,
-                    priority=g.priority,
-                    status=STATUS_IDEA,
-                    notes=g.notes,
-                    buyer_id=g.buyer_id,
-                    retailer=g.retailer,
-                )
-                for g in r.gifts
-            ]
-        db.add(nr)
-
-
-@router.post("/seasons", status_code=201)
-def start_season(body: SeasonCreateIn, _: User = Depends(require_admin), db: Session = Depends(get_db)) -> dict:
-    """Archive the current season and start a new one, optionally copying it over."""
-    name = clean(body.name)
-    if not name:
-        raise unprocessable("Give the season a name.")
-    previous = db.scalar(select(Season).where(Season.is_archived.is_(False)).with_for_update())
-    if previous is not None:
-        previous.is_archived = True
-        previous.archived_at = datetime.now(UTC)
-        db.flush()
-    season = Season(name=name)
-    db.add(season)
-    db.flush()
-    if previous is not None and body.copy_recipients:
-        _copy_season(db, previous, season, body.copy_gifts)
-    db.commit()
-    return {"season": season_out(season)}
-
-
-@router.patch("/seasons/{season_id}")
-def rename_season(
-    season_id: int, body: SeasonPatchIn, _: User = Depends(require_admin), db: Session = Depends(get_db)
-) -> dict:
-    season = db.get(Season, season_id)
-    if season is None:
-        raise HTTPException(404, "Season not found.")
-    name = clean(body.name)
-    if not name:
-        raise unprocessable("Give the season a name.")
-    season.name = name
-    db.commit()
-    return {"season": season_out(season)}
-
-
-@router.post("/seasons/{season_id}/activate")
-def reactivate_season(season_id: int, _: User = Depends(require_admin), db: Session = Depends(get_db)) -> dict:
-    """Make an archived season active again (archiving the current one)."""
-    season = db.get(Season, season_id)
-    if season is None:
-        raise HTTPException(404, "Season not found.")
-    if not season.is_archived:
-        return {"season": season_out(season)}
-    current = active_season(db)
-    if current is not None:
-        current.is_archived = True
-        current.archived_at = datetime.now(UTC)
-        db.flush()
-    season.is_archived = False
-    season.archived_at = None
-    db.commit()
-    return {"season": season_out(season)}
 
 
 # --------------------------------------------------------------------------- settings

@@ -8,11 +8,11 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select, text
 
-from .common import ensure_active_season
+from .common import bootstrap_first_occasion
 from .config import settings
 from .db import SessionLocal
 from .models import ROLE_ADMIN, User
-from .routers import admin, auth, lists, users
+from .routers import admin, auth, lists, occasions, people, users
 from .security import hash_password
 
 log = logging.getLogger("xmas")
@@ -55,7 +55,7 @@ def bootstrap_admin() -> None:
 async def lifespan(_: FastAPI):
     bootstrap_admin()
     with SessionLocal() as db:
-        ensure_active_season(db)
+        bootstrap_first_occasion(db)
     yield
 
 
@@ -97,6 +97,8 @@ async def security_headers(request: Request, call_next):
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(admin.router)
+app.include_router(occasions.router)
+app.include_router(people.router)
 app.include_router(lists.router)
 
 

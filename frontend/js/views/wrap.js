@@ -1,14 +1,14 @@
 import { api } from "../api.js";
 import { h, icon, reveal, clear, skeletonLines, toast } from "../dom.js";
 import { STATUS_LABEL } from "../format.js";
-import { archivedBanner } from "../components.js";
+import { archivedBanner, setArchived } from "../components.js";
 
 const HIDE_KEY = "wrap.hideDone";
+const LAST_KEY = "wrap.occasion";
 const WRAPPABLE = new Set(["ordered", "delivered", "wrapped", "given"]);
 const DONE = new Set(["wrapped", "given"]);
 
 export async function render(main, ctx) {
-  const seasonId = ctx.query.get("season");
   const page = h("div.page.wrap");
   page.append(h("div.loading", { "aria-label": "Loading" }, skeletonLines(["w-40"]), skeletonLines(), skeletonLines()));
   main.append(page);
@@ -16,10 +16,30 @@ export async function render(main, ctx) {
   let data;
   let hideDone = localStorage.getItem(HIDE_KEY) === "1";
 
+  const { occasions } = await api("/api/occasions");
+  const active = occasions.filter((o) => !o.is_archived);
+  const wanted = Number(ctx.query.get("o") || localStorage.getItem(LAST_KEY));
+  const chosen = occasions.find((o) => o.id === wanted) || active[0];
+  if (!chosen) {
+    clear(page).append(h("header.page-head", h("h1.page-title", "Wrapping")), h("div.empty",
+      h("span.empty-star", { "aria-hidden": "true" }),
+      h("h3", "No active occasions"),
+      h("p.muted", "Create or unarchive an occasion from Home.")));
+    return;
+  }
+  localStorage.setItem(LAST_KEY, String(chosen.id));
+
   async function load() {
-    data = await api(`/api/overview${seasonId ? `?season_id=${seasonId}` : ""}`);
-    ctx.setSeasonTag(data.season);
+    data = await api(`/api/occasions/${chosen.id}/overview`);
+    ctx.setOccasion(data.occasion);
     draw();
+  }
+
+  function picker() {
+    const list = active.some((o) => o.id === chosen.id) ? active : [chosen, ...active];
+    if (list.length < 2) return null;
+    return h("nav.jump.no-print", { "aria-label": "Occasion" }, list.map((o) =>
+      h("a.chip", { href: `#/wrap?o=${o.id}`, "aria-current": o.id === chosen.id ? "page" : null }, o.name)));
   }
 
   function draw() {
@@ -42,7 +62,7 @@ export async function render(main, ctx) {
 
     const pct = total ? Math.round((done / total) * 100) : 0;
     const head = h("header.page-head",
-      h("p.eyebrow", data.season.name),
+      h("p.eyebrow", data.occasion.name),
       h("div.title-row",
         h("h1.page-title", "Wrapping"),
         h("button.btn.btn-icon.no-print", { type: "button", "aria-label": "Print checklist", onclick: () => window.print() }, icon("printer"))),
@@ -61,7 +81,8 @@ export async function render(main, ctx) {
       h("span.switch", { "aria-hidden": "true" }),
       h("span", "Hide wrapped"));
 
-    const parts = [ro && archivedBanner(data.season, ctx.navigate, "/wrap"), head, toggle].filter(Boolean);
+    const banner = ro && archivedBanner(data.occasion, async () => { await setArchived(data.occasion, false); load(); });
+    const parts = [banner, head, picker(), toggle].filter(Boolean);
 
     if (!total) {
       parts.push(h("div.empty",

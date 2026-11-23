@@ -4,8 +4,6 @@ import { field } from "../sheet.js";
 
 export function render(main, ctx) {
   const user = ctx.session.user;
-  ctx.setSeasonTag(null);
-
   const nameErr = h("div", { "aria-live": "assertive" });
   const nameSave = h("button.btn", { type: "submit", dataset: { busyLabel: "Saving…" } }, "Save name");
   const nameForm = h("form.form.card", { novalidate: true },

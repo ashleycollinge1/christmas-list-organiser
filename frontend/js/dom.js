@@ -107,6 +107,7 @@ const ICONS = {
   share: "M12 3v12M8 7l4-4 4 4M5 12v7a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-7",
   archive: "M3 4h18v4H3zM5 8v12h14V8M10 12h4",
   note: "M5 4h14v16H5zM8 9h8M8 13h8M8 17h5",
+  more: "M5 12h.01M12 12h.01M19 12h.01",
 };
 
 export function icon(name, label) {
@@ -114,7 +115,7 @@ export function icon(name, label) {
   svg.setAttribute("viewBox", "0 0 24 24");
   svg.setAttribute("fill", "none");
   svg.setAttribute("stroke", "currentColor");
-  svg.setAttribute("stroke-width", "1.8");
+  svg.setAttribute("stroke-width", name === "more" ? "3.2" : "1.8");
   svg.setAttribute("stroke-linecap", "round");
   svg.setAttribute("stroke-linejoin", "round");
   svg.classList.add("icon");

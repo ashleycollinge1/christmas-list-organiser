@@ -9,7 +9,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import AppSetting, Season
+from .models import AppSetting, Occasion, User
 
 DEFAULT_SETTINGS: dict[str, object] = {
     # +/- this many pence of the budget counts as "on budget".
@@ -70,25 +70,31 @@ def margin(db: Session) -> int:
     return int(get_setting(db, "budget_margin_pence"))
 
 
-def active_season(db: Session) -> Season | None:
-    return db.scalar(select(Season).where(Season.is_archived.is_(False)))
-
-
-def ensure_active_season(db: Session) -> Season:
-    """There is always an active season; the first one is named after the current year."""
-    season = active_season(db)
-    if season is None:
-        season = Season(name=f"Christmas {datetime.now(UTC).year}")
-        db.add(season)
-        db.commit()
-    return season
-
-
-def season_out(s: Season) -> dict:
+def occasion_out(o: Occasion, user: User | None = None) -> dict:
     return {
-        "id": s.id,
-        "name": s.name,
-        "is_archived": s.is_archived,
-        "created_at": s.created_at.isoformat() if s.created_at else None,
-        "archived_at": s.archived_at.isoformat() if s.archived_at else None,
+        "id": o.id,
+        "name": o.name,
+        "kind": o.kind,
+        "date": o.occasion_date.isoformat() if o.occasion_date else None,
+        "is_archived": o.is_archived,
+        "created_by": {"id": o.created_by.id, "name": o.created_by.name} if o.created_by else None,
+        "can_manage": user is not None and can_manage(o, user),
+        "created_at": o.created_at.isoformat() if o.created_at else None,
+        "archived_at": o.archived_at.isoformat() if o.archived_at else None,
     }
+
+
+def can_manage(o: Occasion, user: User) -> bool:
+    """Rename, archive, unarchive and delete: the creator, or an admin if the creator is gone."""
+    return o.created_by_id == user.id or (o.created_by_id is None and user.is_admin)
+
+
+def bootstrap_first_occasion(db: Session) -> None:
+    """A brand-new install starts with this year's Christmas, created by the first admin."""
+    if db.scalar(select(Occasion.id).limit(1)) is not None:
+        return
+    admin = db.scalar(select(User).where(User.role == "admin").order_by(User.id))
+    if admin is None:
+        return
+    db.add(Occasion(name=f"Christmas {datetime.now(UTC).year}", kind="christmas", created_by_id=admin.id))
+    db.commit()

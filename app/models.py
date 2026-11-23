@@ -14,7 +14,6 @@ from sqlalchemy import (
     String,
     Text,
     func,
-    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -108,35 +107,80 @@ class Category(Base):
     __table_args__ = (Index("ix_categories_name_lower", func.lower(name), unique=True),)
 
 
-class Season(Base):
+# Occasion kinds. Each has its own app title: Christmas List, Birthday List, Gift List.
+KIND_CHRISTMAS = "christmas"
+KIND_BIRTHDAY = "birthday"
+KIND_OTHER = "other"
+KINDS = (KIND_CHRISTMAS, KIND_BIRTHDAY, KIND_OTHER)
+
+
+class Occasion(Base):
+    """A Christmas, a birthday or any other gift-giving occasion.
+
+    Stored in the ``seasons`` table (its v0.1.0 name) so upgrades never rename tables.
+    Any number can be active; archived occasions are read-only.
+    """
+
     __tablename__ = "seasons"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(80), nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False, default=KIND_CHRISTMAS, server_default=KIND_CHRISTMAS)
+    occasion_date: Mapped[date | None] = mapped_column(Date)
     is_archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    # At most one active season.
-    __table_args__ = (
-        Index("uq_seasons_one_active", "is_archived", unique=True, postgresql_where=text("NOT is_archived")),
-    )
+    created_by: Mapped[User | None] = relationship(lazy="joined")
+
+    __table_args__ = (CheckConstraint("kind IN ('christmas','birthday','other')", name="ck_seasons_kind"),)
 
 
-class Recipient(Base):
-    __tablename__ = "recipients"
+class Person(Base):
+    """Someone you buy for. Linked across occasions: notes and category live here,
+    so editing Molly's sizes once updates every occasion she's in. Private to the owner."""
+
+    __tablename__ = "people"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    season_id: Mapped[int] = mapped_column(ForeignKey("seasons.id", ondelete="CASCADE"), nullable=False, index=True)
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(80), nullable=False)
-    budget_pence: Mapped[int | None] = mapped_column(Integer)
     notes: Mapped[str | None] = mapped_column(Text)
     category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     owner: Mapped[User] = relationship(lazy="joined")
     category: Mapped[Category | None] = relationship(lazy="joined")
+    entries: Mapped[list[Recipient]] = relationship(back_populates="person", lazy="selectin")
+
+
+class Recipient(Base):
+    """A person's entry in one occasion: budget, sharing and gifts."""
+
+    __tablename__ = "recipients"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    occasion_id: Mapped[int] = mapped_column(
+        "season_id", ForeignKey("seasons.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    # Deleting a person with entries is refused (NO ACTION); deleting a user cascades both.
+    person_id: Mapped[int] = mapped_column(ForeignKey("people.id"), nullable=False, index=True)
+    budget_pence: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    # v0.1.0 columns, kept (never dropped) and mirrored from the person on every write,
+    # so the data stays complete and readable by older versions.
+    legacy_name: Mapped[str] = mapped_column("name", String(80), nullable=False)
+    legacy_notes: Mapped[str | None] = mapped_column("notes", Text)
+    legacy_category_id: Mapped[int | None] = mapped_column(
+        "category_id", ForeignKey("categories.id", ondelete="SET NULL")
+    )
+
+    owner: Mapped[User] = relationship(lazy="joined")
+    person: Mapped[Person] = relationship(back_populates="entries", lazy="joined")
+    occasion: Mapped[Occasion] = relationship(lazy="joined")
     shares: Mapped[list[RecipientShare]] = relationship(
         back_populates="recipient", cascade="all, delete-orphan", lazy="selectin"
     )
@@ -145,6 +189,15 @@ class Recipient(Base):
     )
 
     __table_args__ = (CheckConstraint("budget_pence IS NULL OR budget_pence >= 0", name="ck_recipient_budget"),)
+
+    @property
+    def name(self) -> str:
+        return self.person.name
+
+    def mirror_person(self) -> None:
+        self.legacy_name = self.person.name
+        self.legacy_notes = self.person.notes
+        self.legacy_category_id = self.person.category_id
 
 
 class RecipientShare(Base):

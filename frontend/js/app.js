@@ -1,7 +1,9 @@
 import { api, configure, setCsrf, ApiError } from "./api.js";
 import { h, clear, icon, toast } from "./dom.js";
 import * as loginView from "./views/login.js";
-import * as overviewView from "./views/overview.js";
+import * as homeView from "./views/home.js";
+import * as occasionView from "./views/occasion.js";
+import * as peopleView from "./views/people.js";
 import * as recipientView from "./views/recipient.js";
 import * as wrapView from "./views/wrap.js";
 import * as adminView from "./views/admin.js";
@@ -22,8 +24,10 @@ const routes = [
   { pattern: /^\/login$/, view: loginView, public: true },
   { pattern: /^\/invite\/([A-Za-z0-9_-]{10,})$/, view: loginView, public: true, mode: "invite" },
   { pattern: /^\/password$/, view: loginView, public: true, mode: "password" },
-  { pattern: /^\/$/, view: overviewView, nav: "overview" },
-  { pattern: /^\/r\/(\d+)$/, view: recipientView, nav: "overview" },
+  { pattern: /^\/$/, view: homeView, nav: "home" },
+  { pattern: /^\/o\/(\d+)$/, view: occasionView, nav: "home" },
+  { pattern: /^\/r\/(\d+)$/, view: recipientView, nav: "home" },
+  { pattern: /^\/people$/, view: peopleView, nav: "people" },
   { pattern: /^\/wrap$/, view: wrapView, nav: "wrap" },
   { pattern: /^\/admin$/, view: adminView, nav: "admin", admin: true },
   { pattern: /^\/account$/, view: accountView, nav: "account" },
@@ -52,7 +56,8 @@ function renderNav(active) {
   document.body.classList.toggle("has-tabbar", signedIn && Boolean(active));
   if (!signedIn) return;
   const items = [
-    { id: "overview", href: "#/", label: "Overview", icon: "home" },
+    { id: "home", href: "#/", label: "Home", icon: "home" },
+    { id: "people", href: "#/people", label: "People", icon: "users" },
     { id: "wrap", href: "#/wrap", label: "Wrapping", icon: "ribbon" },
     session.user.role === "admin" && { id: "admin", href: "#/admin", label: "Admin", icon: "shield" },
     { id: "account", href: "#/account", label: "Account", icon: "user" },
@@ -63,10 +68,18 @@ function renderNav(active) {
   }
 }
 
-export function setSeasonTag(season) {
+const TITLES = { christmas: "Christmas", birthday: "Birthday", other: "Gift" };
+
+/** Header and tab title follow the occasion being viewed: Christmas List, Birthday List or Gift List. */
+export function setOccasion(occasion) {
   const tag = document.getElementById("season-tag");
-  tag.textContent = season ? season.name : "";
-  tag.classList.toggle("is-archived", Boolean(season?.is_archived));
+  tag.textContent = occasion ? occasion.name : "";
+  tag.classList.toggle("is-archived", Boolean(occasion?.is_archived));
+  const word = TITLES[occasion?.kind] || "Gift";
+  const brand = document.querySelector(".brand-word");
+  brand.replaceChildren(`${word} `, h("em", "List"));
+  document.querySelector(".brand").setAttribute("aria-label", `${word} List: home`);
+  document.title = occasion ? `${occasion.name} · ${word} List` : "Gift List";
 }
 
 async function signOut() {
@@ -103,6 +116,8 @@ async function route() {
     const m = path.match(r.pattern);
     if (m) { match = r; params = m.slice(1); break; }
   }
+  // v0.1.0 links: #/?season=ID
+  if (path === "/" && query.get("season")) return navigate(`/o/${query.get("season")}`, { replace: true });
   if (!match) return navigate("/", { replace: true });
 
   const user = session.user;
@@ -118,12 +133,12 @@ async function route() {
 
   if (cleanup) { try { cleanup(); } catch { /* ignore */ } cleanup = null; }
   renderNav(match.nav);
-  if (!match.nav) setSeasonTag(null);
+  setOccasion(null);
   clear(main);
   window.scrollTo(0, 0);
   try {
     cleanup = (await match.view.render(main, {
-      session, params, query, mode: match.mode, navigate, setSession, signOut, setSeasonTag,
+      session, params, query, mode: match.mode, navigate, setSession, signOut, setOccasion,
     })) || null;
     const y = scrollMemory.get(key);
     if (y) window.scrollTo(0, y);
@@ -136,7 +151,7 @@ async function route() {
         h("p", err.message || String(err)),
         h("div.row",
           h("button.btn", { type: "button", onclick: () => route() }, icon("retry"), "Try again"),
-          h("a.btn.btn-ghost", { href: "#/" }, "Overview")))),
+          h("a.btn.btn-ghost", { href: "#/" }, "Home")))),
     );
   }
   // Move focus for screen readers on route change (not on first load).

@@ -29,18 +29,18 @@ def test_admin_created_user_must_change_password(api):
     temp = r.json()["temporary_password"]
     m = Api(TestClient(api.c.app))
     assert m.login("molly", temp).status_code == 200
-    assert m.get("/api/overview").json()["detail"] == "password_change_required"
+    assert m.get("/api/occasions").json()["detail"] == "password_change_required"
     assert m.post("/api/auth/password", json={"current_password": temp, "new_password": "short"}).status_code == 422
     r = m.post("/api/auth/password", json={"current_password": temp, "new_password": "a-much-better-password"})
     assert r.status_code == 200
-    assert m.get("/api/overview").status_code == 200
+    assert m.get("/api/occasions").status_code == 200
 
 
 def test_non_admin_cannot_admin(second):
     assert second.get("/api/users").status_code == 403
     assert second.post("/api/invites", json={}).status_code == 403
     assert second.post("/api/categories", json={"name": "Kids"}).status_code == 403
-    assert second.post("/api/seasons", json={"name": "Christmas 2027"}).status_code == 403
+    assert second.get("/api/occasions").status_code == 200
     assert second.get("/api/users/directory").status_code == 200
 
 

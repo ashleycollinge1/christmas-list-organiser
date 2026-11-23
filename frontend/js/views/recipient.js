@@ -3,7 +3,7 @@ import { h, icon, reveal, clear, skeletonLines } from "../dom.js";
 import { money } from "../format.js";
 import {
   meter, budgetLine, statusPill, changeStatus, giftMeta, trackingChip, deliveryChip, linkChip, hidingChip,
-  openGiftSheet, openRecipientSheet, archivedBanner,
+  openGiftSheet, openRecipientSheet, archivedBanner, setArchived,
 } from "../components.js";
 
 export async function render(main, ctx) {
@@ -13,12 +13,12 @@ export async function render(main, ctx) {
   main.append(page);
 
   let r;
-  let season;
+  let occasion;
   async function load() {
     const res = await api(`/api/recipients/${id}`);
     r = res.recipient;
-    season = res.season;
-    ctx.setSeasonTag(season);
+    occasion = res.occasion;
+    ctx.setOccasion(occasion);
     draw();
   }
 
@@ -26,10 +26,8 @@ export async function render(main, ctx) {
     clear(page);
     const ro = r.read_only;
     const t = r.totals;
-    const back = season.is_archived ? `#/?season=${season.id}` : "#/";
-
     const head = h("header.page-head",
-      h("a.back", { href: back }, icon("back"), "Overview"),
+      h("a.back", { href: `#/o/${occasion.id}` }, icon("back"), occasion.name),
       h("div.title-row",
         h("h1.page-title", r.name),
         !ro && h("button.btn.btn-icon", {
@@ -37,7 +35,7 @@ export async function render(main, ctx) {
           onclick: () => openRecipientSheet({
             recipient: r, me: ctx.session.user,
             onSaved: load,
-            onDeleted: () => ctx.navigate("/"),
+            onRemoved: () => ctx.navigate(`/o/${occasion.id}`),
           }),
         }, icon("pencil"))),
       h("p.page-sub",
@@ -67,7 +65,8 @@ export async function render(main, ctx) {
       list.append(h("ul.gift-list", r.gifts.map((g) => giftCard(g, ro))));
     }
 
-    const parts = [season.is_archived && archivedBanner(season, ctx.navigate), head, budget, notes, list].filter(Boolean);
+    const banner = occasion.is_archived && archivedBanner(occasion, async () => { await setArchived(occasion, false); load(); });
+    const parts = [banner, head, budget, notes, list].filter(Boolean);
     reveal(parts);
     page.append(...parts);
 
