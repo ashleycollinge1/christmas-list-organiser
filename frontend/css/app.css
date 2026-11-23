@@ -1048,6 +1048,109 @@ select.input {
 .admin-title { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
 .admin-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 2px 0 0; font-size: 14px; color: var(--ink-2); }
 
+/* ------------------------------------------------------------ occasions & people */
+
+.occasion-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.occasion-card {
+  display: grid;
+  gap: 10px;
+  padding: 16px 16px 14px;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background:
+    radial-gradient(80% 120% at 100% 0%, color-mix(in srgb, var(--kind) 9%, transparent), transparent 60%),
+    linear-gradient(180deg, #fffdf8, var(--card));
+  box-shadow: var(--shadow);
+  color: var(--ink);
+  text-decoration: none;
+  transition: transform 0.12s var(--ease), background-color 0.15s;
+}
+.occasion-card:active { transform: scale(0.985); }
+.kind-christmas { --kind: var(--accent); }
+.kind-birthday { --kind: #9c3d6e; }
+.kind-other { --kind: #57514a; }
+.occasion-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.kind-tag {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--kind) 12%, var(--card));
+  color: var(--kind);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.when { font-size: 14px; font-weight: 600; color: var(--ink-2); }
+.when.is-past { color: var(--over); }
+.occasion-name { margin: 0; font: 700 28px/1.1 var(--display); letter-spacing: -0.015em; overflow-wrap: anywhere; }
+
+.archived { margin-top: 28px; }
+.archived summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  list-style: none;
+  font-weight: 600;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.archived summary::-webkit-details-marker { display: none; }
+.archived summary .icon:last-child { margin-left: auto; transition: transform 0.2s var(--ease); }
+.archived[open] summary .icon:last-child { transform: rotate(180deg); }
+.archived .admin-list { margin-top: 8px; }
+.archived-row { color: var(--ink); text-decoration: none; }
+.archived-row .icon { color: var(--ink-2); }
+
+.person-btn { width: 100%; border: 1px solid var(--line); text-align: left; font: inherit; cursor: pointer; }
+.person-occasions { display: block; }
+.person-top .tag { flex: none; }
+
+.jump .chip[aria-current="page"] { background: var(--ink); border-color: var(--ink); color: #fff; }
+
+.radio-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+.radio-row:last-child { border-bottom: 0; }
+.radio-row input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.radio-dot { width: 24px; height: 24px; flex: none; border-radius: 50%; border: 2px solid var(--line-strong); background: #fff; transition: border-color 0.15s, box-shadow 0.15s; }
+.radio-row input:checked + .radio-dot { border-color: var(--accent); box-shadow: inset 0 0 0 5px #fff, inset 0 0 0 12px var(--accent); }
+.radio-row input:focus-visible + .radio-dot { outline: 3px solid var(--accent-2); outline-offset: 2px; }
+.radio-text { display: grid; gap: 1px; min-width: 0; }
+.radio-title { font-weight: 600; overflow-wrap: anywhere; }
+.radio-sub { font-size: 14px; color: var(--ink-2); }
+.pick-list { gap: 0; }
+.pick-list .label { margin-bottom: 4px; }
+.people-picks { display: grid; }
+.people-picks .check-row { border-bottom: 1px solid var(--line); min-height: 52px; }
+.people-picks .check-row:last-child { border-bottom: 0; }
+.copy-opts { gap: 2px; padding: 10px 14px; border-radius: var(--radius-sm); background: var(--card-2); }
+.copy-opts[hidden] { display: none; }
+
+.entry-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; }
+.entry-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 6px 12px 6px 14px;
+  color: var(--ink);
+  text-decoration: none;
+  font-weight: 600;
+  border-top: 1px solid var(--line);
+}
+.entry-list li:first-child .entry-link { border-top: 0; }
+.entry-link .muted { margin-left: auto; font-weight: 400; font-size: 14px; }
+.entry-link .icon { width: 16px; height: 16px; color: var(--ink-2); }
+.entry-link:active { background: var(--card-2); }
+
+.action-item.is-danger { color: var(--over); }
+
 /* ------------------------------------------------------------ motion */
 
 .reveal { animation: rise 0.5s var(--ease) both; animation-delay: calc(var(--i, 0) * 55ms); }

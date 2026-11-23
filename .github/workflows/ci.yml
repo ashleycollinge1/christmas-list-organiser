@@ -47,6 +47,11 @@ jobs:
           ruff format --check .
       - name: Test
         run: pytest -q
+      - name: Models match migrations
+        # Fails if a model change has no migration (or a migration doesn't match the models).
+        run: |
+          alembic upgrade head
+          alembic check
 
   docker-build:
     # Verifies the image builds on every PR/push; release.yml does the publishing.

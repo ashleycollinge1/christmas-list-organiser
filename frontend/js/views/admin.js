@@ -5,9 +5,8 @@ import { openSheet, field, moneyInputEl } from "../sheet.js";
 import { invalidateCategories } from "../components.js";
 
 const TABS = [
-  { id: "people", label: "People" },
+  { id: "people", label: "Accounts" },
   { id: "categories", label: "Categories" },
-  { id: "seasons", label: "Seasons" },
   { id: "settings", label: "Settings" },
 ];
 
@@ -19,14 +18,13 @@ export async function render(main, ctx) {
   const body = h("div.admin-body");
   const head = h("header.page-head",
     h("p.eyebrow", "Admin"),
-    h("h1.page-title", "Settings & people"),
+    h("h1.page-title", "Accounts & settings"),
     h("nav.tabs", { "aria-label": "Admin sections" },
       TABS.map((t) => h("a.tab-link", { href: `#/admin?tab=${t.id}`, "aria-current": t.id === tab ? "page" : null }, t.label))));
   reveal(head, body);
   main.append(h("div.page.admin", head, body));
   body.append(...skeletonLines());
-  ctx.setSeasonTag(null);
-  const views = { people, categories, seasons, settings };
+    const views = { people, categories, settings };
   await views[tab](body, ctx);
 }
 
@@ -72,7 +70,7 @@ async function people(host, ctx) {
   const pastInvites = invites.filter((i) => i.state !== "open").slice(0, 10);
 
   host.append(
-    section("People", userList,
+    section("Accounts", userList,
       h("div.row",
         h("button.btn", { type: "button", onclick: () => createUser(reload) }, icon("plus"), "Add account"),
         h("button.btn.btn-primary", { type: "button", onclick: () => createInvite(reload) }, icon("share"), "Invite link"))),
@@ -230,84 +228,6 @@ function renameCategory(c, reload) {
     build(form) { form.append(field("Name", { name: "name", value: c.name, required: true, autocapitalize: "words" })); },
     async onSave(form) {
       await api(`/api/categories/${c.id}`, { method: "PATCH", body: { name: form.name.value } });
-      reload();
-    },
-  });
-}
-
-// ------------------------------------------------------------------ seasons
-
-async function seasons(host, ctx) {
-  const { seasons: list } = await api("/api/seasons");
-  clear(host);
-  const reload = () => seasons(host, ctx);
-  const active = list.find((s) => !s.is_archived);
-  const archived = list.filter((s) => s.is_archived);
-  const year = new Date().getFullYear();
-  const suggested = active?.name.includes(String(year)) ? `Christmas ${year + 1}` : `Christmas ${year}`;
-
-  host.append(
-    section("Current season",
-      active ? h("div.admin-row.card-row",
-        h("div.admin-main", h("p.admin-title", active.name), h("p.admin-sub", `Started ${when(active.created_at)}`)),
-        h("button.btn.btn-icon", { type: "button", "aria-label": "Rename season", onclick: () => renameSeason(active, reload) }, icon("pencil"))) : h("p.muted", "None."),
-      h("button.btn.btn-primary.btn-block", { type: "button", onclick: () => startSeason(active, suggested, reload) }, icon("archive"), "Archive & start a new season")),
-    section("Archived",
-      archived.length ? h("ul.admin-list", archived.map((s) => h("li.admin-row",
-        h("div.admin-main", h("p.admin-title", s.name), h("p.admin-sub", `Archived ${when(s.archived_at)}`)),
-        h("div.row.row-tight",
-          h("a.btn.btn-sm", { href: `#/?season=${s.id}` }, "View"),
-          h("button.btn.btn-sm", {
-            type: "button",
-            onclick: async () => {
-              if (!(await confirmDialog(`Make ${s.name} current?`, `${active ? `${active.name} will be archived. ` : ""}You can switch back at any time.`, "Make current", { danger: false }))) return;
-              await api(`/api/seasons/${s.id}/activate`, { method: "POST" });
-              toast(`${s.name} is now the current season`);
-              reload();
-            },
-          }, "Make current"))))) : h("p.muted", "No archived seasons yet.")),
-  );
-}
-
-function renameSeason(s, reload) {
-  openSheet({
-    title: "Rename season",
-    build(form) { form.append(field("Name", { name: "name", value: s.name, required: true, autocapitalize: "words" })); },
-    async onSave(form) {
-      await api(`/api/seasons/${s.id}`, { method: "PATCH", body: { name: form.name.value } });
-      reload();
-    },
-  });
-}
-
-function startSeason(active, suggested, reload) {
-  openSheet({
-    title: "New season",
-    saveLabel: "Start",
-    build(form) {
-      const copyGifts = h("input", { type: "checkbox", name: "copy_gifts" });
-      const copyPeople = h("input", { type: "checkbox", name: "copy_recipients", checked: true, onchange: () => {
-        copyGifts.disabled = !copyPeople.checked;
-        if (!copyPeople.checked) copyGifts.checked = false;
-      } });
-      form.append(
-        field("Name", { name: "name", value: suggested, required: true, autocapitalize: "words" }),
-        active && h("p.muted", h("strong", active.name), " will be archived. It stays viewable, read-only."),
-        active && h("fieldset.fieldset",
-          h("legend.label", `Copy from ${active.name}`),
-          h("label.check-row", copyPeople, h("span.check-box", { "aria-hidden": "true" }, icon("check")),
-            h("span", "People, with budgets, notes, categories and sharing")),
-          h("label.check-row", copyGifts, h("span.check-box", { "aria-hidden": "true" }, icon("check")),
-            h("span", "Gifts too, reset to Idea (tracking, delivery and hiding place cleared)"))));
-    },
-    async onSave(form) {
-      const name = form.name.value.trim();
-      if (!name) throw new Error("Give the season a name.");
-      await api("/api/seasons", {
-        method: "POST",
-        body: { name, copy_recipients: form.copy_recipients?.checked ?? false, copy_gifts: form.copy_gifts?.checked ?? false },
-      });
-      toast(`${name} started`);
       reload();
     },
   });

@@ -1,21 +1,21 @@
 import { api } from "../api.js";
 import { h, icon, reveal, clear, skeletonLines } from "../dom.js";
-import { money } from "../format.js";
+import { money, KIND_LABEL, occasionWhen } from "../format.js";
 import {
   meter, budgetLine, statusDots, statusPill, changeStatus, giftMeta, trackingChip, deliveryChip,
-  openRecipientSheet, openGiftSheet, pickSeason, archivedBanner,
+  openAddPersonSheet, openGiftSheet, archivedBanner, occasionMenu, setArchived,
 } from "../components.js";
 
 export async function render(main, ctx) {
-  const seasonId = ctx.query.get("season");
+  const occasionId = Number(ctx.params[0]);
   const page = h("div.page.overview");
   page.append(h("div.loading", { "aria-label": "Loading" }, h("span.skeleton.skeleton-hero"), skeletonLines(), skeletonLines(["w-85", "w-60"])));
   main.append(page);
 
   let data;
   async function load() {
-    data = await api(`/api/overview${seasonId ? `?season_id=${seasonId}` : ""}`);
-    ctx.setSeasonTag(data.season);
+    data = await api(`/api/occasions/${occasionId}/overview`);
+    ctx.setOccasion(data.occasion);
     draw();
   }
 
@@ -30,9 +30,20 @@ export async function render(main, ctx) {
     const t = data.totals;
     const people = data.groups.reduce((n, g) => n + g.recipients.length, 0);
 
+    const o = data.occasion;
+    const when = occasionWhen(o.date);
+    const head = h("header.page-head",
+      h("a.back", { href: "#/" }, icon("back"), "Home"),
+      h("div.title-row",
+        h("div",
+          h("p.eyebrow", KIND_LABEL[o.kind], when && ` · ${when.date} · ${when.when}`),
+          h("h1.page-title", o.name)),
+        o.can_manage && h("button.btn.btn-icon", {
+          type: "button", "aria-label": `Manage ${o.name}`,
+          onclick: () => occasionMenu(data, { onChanged: () => load(), onDeleted: () => ctx.navigate("/") }),
+        }, icon("more"))));
+
     const hero = h("section.hero",
-      h("button.season-switch", { type: "button", onclick: () => pickSeason(data.season, ctx.navigate) },
-        h("span", data.season.name), icon("down")),
       h("p.hero-figure", h("span.hero-amount", money(t.spent_pence)),
         t.budget_pence != null && h("span.hero-of", `of ${money(t.budget_pence)} budget`)),
       meter(t, { large: true }),
@@ -46,7 +57,8 @@ export async function render(main, ctx) {
       data.to_order.length > 0 && h("a.chip", { href: "#to-order", onclick: jumpTo("to-order") }, icon("gift"), `${data.to_order.length} to order`));
 
     const sections = [
-      ro && archivedBanner(data.season, ctx.navigate),
+      ro && archivedBanner(o, async () => { await setArchived(o, false); load(); }),
+      head,
       hero,
       jump,
       peopleSection(ro),
@@ -59,7 +71,8 @@ export async function render(main, ctx) {
     if (!ro) {
       page.append(h("div.fab-wrap", h("button.btn.btn-primary.fab", {
         type: "button",
-        onclick: () => openRecipientSheet({
+        onclick: () => openAddPersonSheet({
+          occasion: data.occasion,
           me: ctx.session.user,
           onSaved: (r) => ctx.navigate(`/r/${r.id}`),
         }),
@@ -80,8 +93,8 @@ export async function render(main, ctx) {
     if (!data.groups.length) {
       sec.append(h("div.empty",
         h("span.empty-star", { "aria-hidden": "true" }),
-        h("h3", ro ? "Nobody in this season" : "Who are you buying for?"),
-        h("p.muted", ro ? "This archived season has no recipients." : "Add each person with a budget, then list their gifts.")));
+        h("h3", ro ? "Nobody here" : "Who are you buying for?"),
+        h("p.muted", ro ? "This archived occasion has nobody in it." : "Add each person with a budget, then list their gifts.")));
       return sec;
     }
     for (const g of data.groups) {

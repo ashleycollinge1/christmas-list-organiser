@@ -2,7 +2,7 @@ import { api } from "../api.js";
 import { h, reveal, formError, busy, autofocus, icon } from "../dom.js";
 
 function hero(lede) {
-  const eyebrow = h("p.eyebrow", "Christmas List");
+  const eyebrow = h("p.eyebrow", "Gift List");
   const title = h("h1.auth-title", h("span.thin", "Every gift,"), h("br"), h("em", "sorted."));
   const p = h("p.lede", lede);
   reveal(eyebrow, title, p);
@@ -36,7 +36,7 @@ export function render(main, ctx) {
     wrap.append(hero("You've been invited. Set up your account to start planning gifts."), formSide);
     return renderInvite(formSide, ctx);
   }
-  wrap.append(hero("Budgets, links and a traffic light for every present, from idea to wrapped."), formSide);
+  wrap.append(hero("Christmases and birthdays: budgets, links and a traffic light for every present, from idea to wrapped."), formSide);
   return renderLogin(formSide, ctx);
 }
 

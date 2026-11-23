@@ -77,3 +77,21 @@ export function budgetPhrase(t) {
   if (t.state === "on") return "On budget";
   return `${money(t.remaining_pence)} left`;
 }
+
+export const KINDS = [
+  { value: "christmas", label: "Christmas" },
+  { value: "birthday", label: "Birthday" },
+  { value: "other", label: "Other" },
+];
+export const KIND_LABEL = Object.fromEntries(KINDS.map((k) => [k.value, k.label]));
+
+/** Occasion date: "Sat 14 Mar 2027 · in 112 days". */
+export function occasionWhen(iso) {
+  if (!iso) return null;
+  const d = localDate(iso);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const days = Math.round((d - today) / 86400000);
+  const when = days === 0 ? "today" : days === 1 ? "tomorrow" : days > 1 ? `in ${days} days` : days === -1 ? "yesterday" : `${-days} days ago`;
+  return { date: fullFmt.format(d), when, past: days < 0, days };
+}

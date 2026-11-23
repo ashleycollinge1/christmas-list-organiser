@@ -1,8 +1,9 @@
 name: Release
 
-# Push a tag like v1.2.0 to: test, build and push the image to GHCR, then
-# commit deploy/compose/docker-compose.v1.2.0.yml, docker-compose.latest.yml and
-# the root docker-compose.yml (all pinned to the image digest) back to stable.
+# Push a tag like v1.2.0 to: check CHANGELOG.md has notes for it, test, build and
+# push the image to GHCR, commit deploy/compose/docker-compose.v1.2.0.yml,
+# docker-compose.latest.yml and the root docker-compose.yml (all pinned to the
+# image digest) back to stable, then publish a GitHub Release with those notes.
 on:
   push:
     tags: ["v*.*.*"]
@@ -12,6 +13,18 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  notes:
+    # Fail fast: no release without release notes (including upgrade steps).
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: python scripts/release_notes.py --version "${GITHUB_REF_NAME}"
+
   test:
     uses: ./.github/workflows/ci.yml
     with:
@@ -20,7 +33,7 @@ jobs:
       contents: read
 
   image:
-    needs: test
+    needs: [notes, test]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -102,3 +115,32 @@ jobs:
             git pull --rebase origin stable
           done
           exit 1
+
+  release:
+    needs: [image, compose]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: stable
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python scripts/release_notes.py --version "${GITHUB_REF_NAME}" > notes.md
+          {
+            echo
+            echo "---"
+            echo "**Image:** \`ghcr.io/${GITHUB_REPOSITORY,,}:${GITHUB_REF_NAME#v}@${{ needs.image.outputs.digest }}\`"
+          } >> notes.md
+          flags=()
+          [[ "${GITHUB_REF_NAME}" == *-* ]] && flags+=(--prerelease)
+          gh release create "${GITHUB_REF_NAME}" "deploy/compose/docker-compose.${GITHUB_REF_NAME}.yml" \
+            --title "${GITHUB_REF_NAME}" --notes-file notes.md --verify-tag "${flags[@]}"

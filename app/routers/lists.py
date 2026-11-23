@@ -1,32 +1,33 @@
-"""Recipients, gifts and the season overview.
+"""Recipients (a person's entry in an occasion), gifts, and the shared access rules.
 
 Visibility: a recipient is visible only to its owner and the users it is shared
-with. Admins get no special access here, so "hidden from" holds for everyone.
-Archived seasons are read-only.
+with. An occasion is visible to its creator and to anyone who can see a
+recipient in it. Admins get no special access, so "hidden from" holds for
+everyone. Archived occasions are read-only.
 """
 
 from __future__ import annotations
 
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy import func, or_, select
+from sqlalchemy import exists, or_, select
 from sqlalchemy.orm import Session
 
 from ..budget import Totals, gift_cost, line_total
-from ..common import clean, clean_link, ensure_active_season, margin, season_out, unprocessable
+from ..common import clean, clean_link, margin, occasion_out, unprocessable
 from ..db import get_db
 from ..models import (
     PRIORITY_MEDIUM,
     STATUS_IDEA,
-    STATUS_ORDERED,
     STATUSES,
     Category,
     Gift,
+    Occasion,
+    Person,
     Recipient,
     RecipientShare,
-    Season,
     User,
 )
 from ..security import current_user
@@ -40,31 +41,36 @@ STATUS_RANK = {s: i for i, s in enumerate(STATUSES)}
 # --------------------------------------------------------------------------- access
 
 
-def _visible(user: User):
+def visible_recipient(user: User):
     shared = select(RecipientShare.recipient_id).where(RecipientShare.user_id == user.id)
     return or_(Recipient.owner_id == user.id, Recipient.id.in_(shared))
 
 
-def _season_or_404(db: Session, season_id: int | None) -> Season:
-    if season_id is None:
-        return ensure_active_season(db)
-    season = db.get(Season, season_id)
-    if season is None:
-        raise HTTPException(404, "Season not found.")
-    return season
+def visible_occasion(user: User):
+    has_visible = exists().where(Recipient.occasion_id == Occasion.id, visible_recipient(user))
+    return or_(Occasion.created_by_id == user.id, has_visible)
 
 
-def _writable(season: Season) -> None:
-    if season.is_archived:
-        raise HTTPException(status.HTTP_409_CONFLICT, "This season is archived and read-only.")
+def load_occasion(db: Session, user: User, occasion_id: int, *, write: bool = False) -> Occasion:
+    o = db.scalar(select(Occasion).where(Occasion.id == occasion_id, visible_occasion(user)))
+    if o is None:
+        raise HTTPException(404, "Occasion not found.")
+    if write:
+        writable(o)
+    return o
+
+
+def writable(o: Occasion) -> None:
+    if o.is_archived:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This occasion is archived and read-only. Unarchive it to edit.")
 
 
 def load_recipient(db: Session, user: User, recipient_id: int, *, write: bool = False) -> Recipient:
-    r = db.scalar(select(Recipient).where(Recipient.id == recipient_id, _visible(user)))
+    r = db.scalar(select(Recipient).where(Recipient.id == recipient_id, visible_recipient(user)))
     if r is None:
         raise HTTPException(404, "Recipient not found.")
     if write:
-        _writable(db.get(Season, r.season_id))
+        writable(r.occasion)
     return r
 
 
@@ -114,19 +120,22 @@ def sorted_gifts(gifts: list[Gift]) -> list[Gift]:
     return sorted(gifts, key=lambda g: (STATUS_RANK.get(g.status, 99), g.priority, g.id))
 
 
-def recipient_out(r: Recipient, user: User, m: int, read_only: bool, with_gifts: bool = True) -> dict:
+def recipient_out(r: Recipient, user: User, m: int, read_only: bool | None = None, with_gifts: bool = True) -> dict:
     totals = Totals(budget=r.budget_pence).add_gifts(r.gifts)
+    p = r.person
     out = {
         "id": r.id,
-        "season_id": r.season_id,
-        "name": r.name,
+        "person_id": p.id,
+        "occasion_id": r.occasion_id,
+        "occasion": {"id": r.occasion.id, "name": r.occasion.name, "kind": r.occasion.kind},
+        "name": p.name,
         "budget_pence": r.budget_pence,
-        "notes": r.notes,
-        "category": {"id": r.category.id, "name": r.category.name} if r.category else None,
+        "notes": p.notes,
+        "category": {"id": p.category.id, "name": p.category.name} if p.category else None,
         "owner": _person(r.owner),
         "is_owner": r.owner_id == user.id,
         "shared_with": sorted((_person(s.user) for s in r.shares), key=lambda p: p["name"].lower()),
-        "read_only": read_only,
+        "read_only": r.occasion.is_archived if read_only is None else read_only,
         "totals": totals.to_dict(m),
     }
     if with_gifts:
@@ -134,150 +143,49 @@ def recipient_out(r: Recipient, user: User, m: int, read_only: bool, with_gifts:
     return out
 
 
-# --------------------------------------------------------------------------- overview
-
-
-@router.get("/overview")
-def overview(
-    season_id: int | None = Query(default=None),
-    user: User = Depends(current_user),
-    db: Session = Depends(get_db),
-) -> dict:
-    season = _season_or_404(db, season_id)
-    m = margin(db)
-    recipients = db.scalars(
-        select(Recipient)
-        .where(Recipient.season_id == season.id, _visible(user))
-        .order_by(func.lower(Recipient.name), Recipient.id)
-    ).all()
-    categories = db.scalars(select(Category).order_by(Category.sort_order, Category.id)).all()
-
-    groups: dict[int | None, dict] = {
-        c.id: {"category": {"id": c.id, "name": c.name}, "totals": Totals(), "recipients": []} for c in categories
-    }
-    groups[None] = {"category": None, "totals": Totals(), "recipients": []}
-    season_totals = Totals()
-    to_order, awaiting = [], []
-
-    for r in recipients:
-        out = recipient_out(r, user, m, season.is_archived)
-        rt = Totals(budget=r.budget_pence).add_gifts(r.gifts)
-        g = groups[r.category_id if r.category_id in groups else None]
-        g["recipients"].append(out)
-        g["totals"].merge(rt)
-        season_totals.merge(rt)
-        for gift in r.gifts:
-            row = {**gift_out(gift), "recipient_name": r.name}
-            if gift.status == STATUS_IDEA:
-                to_order.append(row)
-            elif gift.status == STATUS_ORDERED:
-                awaiting.append(row)
-
-    to_order.sort(key=lambda x: (x["priority"], x["recipient_name"].lower(), x["id"]))
-    awaiting.sort(key=lambda x: (x["delivery_date"] or "9999-12-31", x["recipient_name"].lower(), x["id"]))
-
-    return {
-        "season": season_out(season),
-        "read_only": season.is_archived,
-        "margin_pence": m,
-        "totals": season_totals.to_dict(m),
-        "groups": [{**g, "totals": g["totals"].to_dict(m)} for g in groups.values() if g["recipients"]],
-        "to_order": to_order,
-        "awaiting_delivery": awaiting,
-    }
-
-
 # --------------------------------------------------------------------------- recipients
 
 
 class RecipientIn(BaseModel):
+    # Person fields (owner only): changing them updates every occasion the person is in.
     name: str | None = Field(default=None, max_length=80)
-    budget_pence: int | None = Field(default=None, ge=0, le=MAX_PENCE)
     notes: str | None = Field(default=None, max_length=4000)
     category_id: int | None = None
+    # Entry fields.
+    budget_pence: int | None = Field(default=None, ge=0, le=MAX_PENCE)
 
 
 class SharesIn(BaseModel):
     user_ids: list[int] = Field(default_factory=list, max_length=50)
 
 
-def _check_category(db: Session, category_id: int | None) -> None:
+PERSON_FIELDS = {"name", "notes", "category_id"}
+
+
+def check_category(db: Session, category_id: int | None) -> None:
     if category_id is not None and db.get(Category, category_id) is None:
         raise unprocessable("That category no longer exists.")
 
 
-@router.post("/recipients", status_code=201)
-def create_recipient(body: RecipientIn, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
-    season = ensure_active_season(db)
-    name = clean(body.name)
-    if not name:
-        raise unprocessable("Give the recipient a name.")
-    _check_category(db, body.category_id)
-    r = Recipient(
-        season_id=season.id,
-        owner_id=user.id,
-        name=name,
-        budget_pence=body.budget_pence,
-        notes=clean(body.notes),
-        category_id=body.category_id,
-    )
-    db.add(r)
-    db.commit()
-    db.refresh(r)
-    return {"recipient": recipient_out(r, user, margin(db), False)}
-
-
-@router.get("/recipients/{recipient_id}")
-def get_recipient(recipient_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
-    r = load_recipient(db, user, recipient_id)
-    season = db.get(Season, r.season_id)
-    return {
-        "recipient": recipient_out(r, user, margin(db), season.is_archived),
-        "season": season_out(season),
-    }
-
-
-@router.patch("/recipients/{recipient_id}")
-def update_recipient(
-    recipient_id: int, body: RecipientIn, user: User = Depends(current_user), db: Session = Depends(get_db)
-) -> dict:
-    r = load_recipient(db, user, recipient_id, write=True)
-    fields = body.model_fields_set
+def apply_person_fields(db: Session, p: Person, body: BaseModel, fields: set[str]) -> None:
     if "name" in fields:
         name = clean(body.name)
         if not name:
-            raise unprocessable("Give the recipient a name.")
-        r.name = name
-    if "budget_pence" in fields:
-        r.budget_pence = body.budget_pence
+            raise unprocessable("Give them a name.")
+        p.name = name
     if "notes" in fields:
-        r.notes = clean(body.notes)
+        p.notes = clean(body.notes)
     if "category_id" in fields:
-        _check_category(db, body.category_id)
-        r.category_id = body.category_id
-    db.commit()
-    db.refresh(r)
-    return {"recipient": recipient_out(r, user, margin(db), False)}
+        check_category(db, body.category_id)
+        p.category_id = body.category_id
+    db.flush()
+    db.refresh(p)
+    for entry in p.entries:
+        entry.mirror_person()
 
 
-@router.delete("/recipients/{recipient_id}")
-def delete_recipient(recipient_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
-    r = load_recipient(db, user, recipient_id, write=True)
-    if r.owner_id != user.id:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the person who added this recipient can delete them.")
-    db.delete(r)
-    db.commit()
-    return {"ok": True}
-
-
-@router.put("/recipients/{recipient_id}/shares")
-def set_shares(
-    recipient_id: int, body: SharesIn, user: User = Depends(current_user), db: Session = Depends(get_db)
-) -> dict:
-    r = load_recipient(db, user, recipient_id, write=True)
-    if r.owner_id != user.id:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the person who added this recipient can change sharing.")
-    ids = set(body.user_ids) - {r.owner_id}
+def set_shares(db: Session, r: Recipient, user_ids: list[int]) -> None:
+    ids = set(user_ids) - {r.owner_id}
     if ids:
         found = set(db.scalars(select(User.id).where(User.id.in_(ids), User.is_active.is_(True))).all())
         if found != ids:
@@ -287,9 +195,53 @@ def set_shares(
         r.shares.remove(current[uid])
     for uid in ids - set(current):
         r.shares.append(RecipientShare(user_id=uid))
+
+
+@router.get("/recipients/{recipient_id}")
+def get_recipient(recipient_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    r = load_recipient(db, user, recipient_id)
+    return {"recipient": recipient_out(r, user, margin(db)), "occasion": occasion_out(r.occasion, user)}
+
+
+@router.patch("/recipients/{recipient_id}")
+def update_recipient(
+    recipient_id: int, body: RecipientIn, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> dict:
+    r = load_recipient(db, user, recipient_id, write=True)
+    fields = body.model_fields_set
+    if fields & PERSON_FIELDS:
+        if r.owner_id != user.id:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the person who added them can change their details.")
+        apply_person_fields(db, r.person, body, fields & PERSON_FIELDS)
+    if "budget_pence" in fields:
+        r.budget_pence = body.budget_pence
     db.commit()
     db.refresh(r)
-    return {"recipient": recipient_out(r, user, margin(db), False)}
+    return {"recipient": recipient_out(r, user, margin(db))}
+
+
+@router.delete("/recipients/{recipient_id}")
+def remove_recipient(recipient_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    """Remove someone from an occasion (with their gifts there). The person is kept."""
+    r = load_recipient(db, user, recipient_id, write=True)
+    if r.owner_id != user.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the person who added them can remove them.")
+    db.delete(r)
+    db.commit()
+    return {"ok": True}
+
+
+@router.put("/recipients/{recipient_id}/shares")
+def update_shares(
+    recipient_id: int, body: SharesIn, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> dict:
+    r = load_recipient(db, user, recipient_id, write=True)
+    if r.owner_id != user.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the person who added them can change sharing.")
+    set_shares(db, r, body.user_ids)
+    db.commit()
+    db.refresh(r)
+    return {"recipient": recipient_out(r, user, margin(db))}
 
 
 # --------------------------------------------------------------------------- gifts
@@ -354,7 +306,7 @@ def create_gift(
     db.commit()
     db.refresh(g)
     db.refresh(r)
-    return {"gift": gift_out(g), "recipient": recipient_out(r, user, margin(db), False, with_gifts=False)}
+    return {"gift": gift_out(g), "recipient": recipient_out(r, user, margin(db), with_gifts=False)}
 
 
 @router.patch("/gifts/{gift_id}")
@@ -365,7 +317,7 @@ def update_gift(gift_id: int, body: GiftIn, user: User = Depends(current_user), 
     db.commit()
     db.refresh(g)
     db.refresh(r)
-    return {"gift": gift_out(g), "recipient": recipient_out(r, user, margin(db), False, with_gifts=False)}
+    return {"gift": gift_out(g), "recipient": recipient_out(r, user, margin(db), with_gifts=False)}
 
 
 @router.delete("/gifts/{gift_id}")
@@ -375,4 +327,4 @@ def delete_gift(gift_id: int, user: User = Depends(current_user), db: Session = 
     db.delete(g)
     db.commit()
     db.refresh(r)
-    return {"ok": True, "recipient": recipient_out(r, user, margin(db), False, with_gifts=False)}
+    return {"ok": True, "recipient": recipient_out(r, user, margin(db), with_gifts=False)}

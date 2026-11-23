@@ -1,6 +1,6 @@
 # Christmas List Organiser
 
-A self-hosted gift planner for the person doing the buying. Add the people you're buying for, give each one a budget, and list their gifts. Each gift moves through a traffic light, and the app keeps a running total against every budget.
+A self-hosted gift planner for the person doing the buying, for Christmases, birthdays and any other occasion. Add the people you're buying for, give each one a budget, and list their gifts. Each gift moves through a traffic light, and the app keeps a running total against every budget.
 
 - **Budgets with a live tally.** Set a budget per person, e.g. Molly £300. Every gift has a price and quantity, and you see what you've **spent** (Ordered onwards), what you've **planned** (including ideas), and whether you're **under, on or over** budget. "On" means within a margin you choose (default ±£5).
 - **Traffic-light status:** Idea → Ordered → Delivered → Wrapped → Given. Tap a status to move it on, or press and hold to pick any stage. Every change can be undone.
@@ -15,8 +15,9 @@ A self-hosted gift planner for the person doing the buying. Add the people you'r
   - An **Awaiting delivery** list sorted by date, showing tracking numbers.
   - A **Still to order** list sorted by priority.
 - **Wrapping checklist.** Tick gifts off as you wrap them, with where each one is hidden, or print it as a paper checklist.
-- **Seasons.** Archive this Christmas and start the next. Everyone can be copied over (budgets, notes, categories, sharing), with their gifts too if you like. Archived seasons stay viewable and read-only.
-- **Private by default, shareable when needed.** Each person you add is visible only to you. Share them with a sibling for joint gifts. Anyone you haven't shared with, admins included, can't see them at all.
+- **Occasions: Christmases, birthdays and more.** Any number can be active at once, each with an optional date and countdown. Start a new one from scratch, or bring people in from another occasion, optionally copying their budgets, sharing and gifts. Archive, unarchive or delete occasions; archived ones stay viewable and read-only. The header reads *Christmas List*, *Birthday List* or *Gift List* to match.
+- **Linked people.** The **People** tab lists everyone you buy for. Their notes (sizes, likes) and category are shared across all their occasions, while budgets and gifts stay per occasion.
+- **Private by default, shareable when needed.** Each person you add is visible only to you. Share them in an occasion with a sibling for joint gifts. Anyone you haven't shared with, admins included, can't see them, and can't see the occasion either.
 - **Accounts.** The admin creates accounts, or sends single-use invite links. Passwords are hashed with Argon2id.
 
 It's built for **iPhone Safari** (tested at iPhone 11, 12 and 14 sizes): every control is thumb-sized, and forms open as bottom sheets that stay above the keyboard. It works on desktop too.
@@ -37,7 +38,7 @@ browser ───▶│                                     │
 
 - **web**: the API, plus a zero-dependency HTML/CSS/JS frontend. It serves plain HTTP; your reverse proxy handles HTTPS.
 - **db**: Postgres 17.
-- **backup**: a nightly `pg_dump` into a folder on the host. It uses the same `postgres:17-alpine` image as the database, so nothing extra is built or pulled.
+- **backup**: a `pg_dump` into a folder on the host every time it starts, then nightly. `web` waits for the start-up dump before it starts, so a backup always exists from just before any database migration. It uses the same `postgres:17-alpine` image as the database, so nothing extra is built or pulled.
 
 ## Deploy
 
@@ -104,6 +105,7 @@ Docker-published ports bypass `ufw` on most Linux hosts. If you use `0.0.0.0` on
 |---|---|---|
 | Containers are healthy, but the page won't load from another machine | `APP_BIND=127.0.0.1` (the default) | Set `APP_BIND=0.0.0.0` or the LAN IP |
 | *"Your session ended. Please sign in again."* straight after every login | `COOKIE_SECURE=true` while browsing over `http://` | Use the `https://` address, or set `COOKIE_SECURE=false` on a trusted LAN |
+| `docker compose up -d` sits at *"Waiting"* and `web` stays *Created* | The start-up backup is failing, so `web` (which migrates the database) is held back on purpose | Run `docker compose logs backup` and fix the cause (often disk space or folder permissions on `BACKUP_PATH`). In an emergency only, set `BACKUP_REQUIRED=false` |
 
 ### Configuration
 
@@ -119,13 +121,19 @@ All settings are environment variables in `.env`. See [`.env.example`](.env.exam
 | `BACKUP_TIME` | `03:00` | Local time of the nightly backup (24h, in `TZ`). |
 | `BACKUP_KEEP_DAYS` | `30` | Older dumps are deleted. |
 | `BACKUP_UID` / `BACKUP_GID` | `1000` | Owner of the dump files on the host. |
+| `BACKUP_REQUIRED` | `true` | `web` only starts after a successful start-up dump. `false` lets it start anyway (not recommended). |
 | `TZ` | `Europe/London` | |
 
-The budget margin ("on budget" means within ±£5), categories and seasons are managed in the app's **Admin** tab, not in `.env`.
+The budget margin ("on budget" means within ±£5) and categories are managed in the app's **Admin** tab, not in `.env`.
 
 ### Backups & restore
 
-The `backup` service writes `christmas-YYYY-MM-DD_HHMMSS.dump` (pg_dump custom format) into `BACKUP_PATH` every night. It also takes one on first start if the folder is empty. Check it with `docker compose logs backup`.
+The `backup` service writes pg_dump custom-format files into `BACKUP_PATH`:
+
+- `christmas-YYYY-MM-DD_HHMMSS_startup.dump` every time it starts. Every release changes the backup service's configuration, so upgrading always recreates it, and `web` (which runs migrations) waits until this dump has succeeded.
+- `christmas-YYYY-MM-DD_HHMMSS_nightly.dump` every night at `BACKUP_TIME`.
+
+Dumps older than `BACKUP_KEEP_DAYS` are deleted. Check it with `docker compose logs backup`. If the start-up dump fails, `web` won't start: the log says why. Fix the problem, or set `BACKUP_REQUIRED=false` in an emergency.
 
 Take a backup right now:
 
@@ -145,32 +153,53 @@ Use your `POSTGRES_USER` / `POSTGRES_DB` in place of `xmas` if you changed them.
 
 ### Upgrading
 
-Replace `docker-compose.yml` with the newer one from the repo, then run `docker compose pull && docker compose up -d`. Database migrations run automatically when the web container starts. To roll back, use the matching `deploy/compose/docker-compose.vX.Y.Z.yml` and restore a backup taken before the upgrade.
+**Read the [release notes](https://github.com/ashleycollinge1/christmas-list-organiser/releases) first.** Every release lists its upgrade steps at the top, followed by any database changes and how to roll back. They're also in [`CHANGELOG.md`](CHANGELOG.md).
+
+The usual steps are to replace `docker-compose.yml` with the new one (attached to each release), then:
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+The backup service takes a dump first. Then `web` starts and runs any database migrations automatically. To roll back, restore that `_startup.dump` and use the previous version's compose file from `deploy/compose/`; the release notes give the exact commands.
 
 ## Using it
 
 1. **Admin → Categories** (optional): add groups such as *Kids* or *Siblings*. People without one appear under *Uncategorised*.
-2. **Overview → Add person**: name, budget, category, notes and who to share with.
+2. **Open an occasion → Add person**: pick one of your people or add someone new, then set a budget and who to share with.
 3. **Add gift**: only the description is required. Fill in price, link and the rest as you go.
 4. **Tap the status pill** to move a gift on as you order it, it arrives, and you wrap it. Press and hold the pill to pick any stage.
 5. **Wrapping**: tick gifts off as you wrap them. The printer button gives you a paper copy.
-6. **Admin → Seasons → Archive & start a new season** in January (or whenever).
+6. **Home → New occasion** for a birthday or next Christmas. Pick people (and optionally an occasion to copy budgets, sharing and gifts from). Use an occasion's ⋯ menu to edit, archive, unarchive or delete it.
 
-Inviting someone: **Admin → People → Invite link**, then *Share…* sends it straight to Messages on an iPhone. Each link works once and expires after 7 days.
+Inviting someone: **Admin → Accounts → Invite link**, then *Share…* sends it straight to Messages on an iPhone. Each link works once and expires after 7 days.
 
 ## Releases (CI/CD)
 
 - **Every push to `stable` and every PR** runs lint, the tests against a real Postgres, and a test Docker build ([`ci.yml`](.github/workflows/ci.yml)).
 - **Pushing a tag**, e.g. `git tag v1.0.0 && git push origin v1.0.0`, runs [`release.yml`](.github/workflows/release.yml). It:
-  1. runs the tests;
+  1. checks [`CHANGELOG.md`](CHANGELOG.md) has a `## v1.0.0` section with `### Upgrade steps`, and stops if not; then runs the tests;
   2. builds the image for `linux/amd64` and `linux/arm64`, and pushes it to `ghcr.io/ashleycollinge1/christmas-list-organiser` tagged `1.0.0`, `1.0`, `latest` and `sha-…`;
   3. renders [`deploy/compose.template.yml`](deploy/compose.template.yml) into `deploy/compose/docker-compose.v1.0.0.yml` pinned to the image **digest**, updates `docker-compose.latest.yml` and the root `docker-compose.yml`, and commits them to `stable`.
 
-Pre-release tags (`v1.1.0-rc.1`) get their own compose file but don't move `latest` or the root file.
+  4. publishes a **GitHub Release** for the tag, with that changelog section as its notes and the version's compose file attached.
+
+Pre-release tags (`v1.1.0-rc.1`) get their own compose file and a pre-release, but don't move `latest` or the root file.
 
 **First release only:** open the package on GitHub (*Packages → christmas-list-organiser → Package settings*) and check its visibility is **Public**. Packages pushed from a public repo's workflow usually inherit public visibility, but a new package can start out private. Once it's public, anyone can `docker compose pull` without logging in. If `stable` is branch-protected, allow GitHub Actions to push to it.
 
 To change what gets deployed, edit `deploy/compose.template.yml`, not the generated files.
+
+## Making changes safely
+
+This is production software with real data. Every change follows these rules:
+
+- **Migrations are additive.** Add tables and columns; never drop, rename or rewrite existing data in a migration. If something must go, stop using it and leave it in place.
+- **Every migration gets a data-preservation test** in [`tests/test_migrations.py`](tests/test_migrations.py): seed the previous schema with realistic data, upgrade, and check that every row and value survived.
+- **CI runs `alembic check`**, so model changes can't ship without a matching migration.
+- **Every release has a `CHANGELOG.md` entry** with **Upgrade steps** first, including any manual or migration steps and how to roll back. The release workflow refuses to publish without one.
+- Work on a branch and open a pull request, so CI runs before anything reaches `stable`.
 
 ## Development
 
