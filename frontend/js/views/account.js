@@ -61,14 +61,15 @@ export function render(main, ctx) {
     h("h2.card-title", "iPhone Shortcut"),
     h("p.muted", "Add things to your wish list straight from Safari's Share button. The name and price are filled in from the page. Set it up once in the Shortcuts app:"),
     h("ol.steps",
-      h("li", "Open ", h("strong", "Shortcuts"), ", tap ", h("strong", "+"), " and name it ", h("em", "Add to wish list"), "."),
-      h("li", "Tap ", h("strong", "ⓘ"), " (or the name at the top) and turn on ", h("strong", "Show in Share Sheet"), ". Set it to receive ", h("strong", "URLs"), " and ", h("strong", "Safari web pages"), "."),
+      h("li", "Open the ", h("strong", "Shortcuts"), " app and tap ", h("strong", "+"), ". Rename it ", h("em", "Add to wish list"), " (tap the name at the top)."),
+      h("li", "Tap ", h("strong", "ⓘ"), " at the bottom and turn on ", h("strong", "Show in Share Sheet"), ". Close that. At the top it now says ", h("em", "Receive … from Share Sheet"), ": tap the types and leave only ", h("strong", "URLs"), " and ", h("strong", "Safari web pages"), "."),
       h("li", "Add the action ", h("strong", "URL Encode"), ". It encodes the ", h("em", "Shortcut Input"), "."),
-      h("li", "Add the action ", h("strong", "Show Web Page"), " and set its URL to this address, then tap the end of it and insert the ", h("em", "URL Encoded Text"), " variable:"),
+      h("li", "Add the action ", h("strong", "URL"), ". Paste the address below into it, then tap at the very end and choose the ", h("em", "URL Encoded Text"), " variable from the bar above the keyboard."),
+      h("li", "Add the action ", h("strong", "Show Web Page"), ". It shows the ", h("em", "URL"), " from the step before. Tap ", h("strong", "Done"), "."),
     ),
     h("p.secret.mono", shareBase),
     h("button.btn.btn-block", { type: "button", onclick: () => copyText(shareBase, "Address copied") }, icon("copy"), "Copy address"),
-    h("p.muted.small", "Then, in Safari: Share → Add to wish list. The first time, sign in inside the window that opens; it stays signed in for 30 days. Use “Open URLs” instead of “Show Web Page” if you'd rather it opened in Safari itself."));
+    h("p.muted.small", "To use it, in Safari: Share → Add to wish list (scroll the actions, or use Edit Actions to make it a favourite). The first time, sign in inside the window that opens; it stays signed in for 30 days. Use “Open URLs” instead of “Show Web Page” if you'd rather it opened in Safari itself."));
 
   const head = h("header.page-head",
     h("p.eyebrow", `@${user.username}`),
