@@ -20,6 +20,7 @@ from ..common import can_manage, clean, margin, occasion_out, unprocessable
 from ..db import get_db
 from ..models import (
     KINDS,
+    PERSON_ME,
     STATUS_IDEA,
     STATUS_ORDERED,
     Category,
@@ -29,6 +30,7 @@ from ..models import (
     Recipient,
     RecipientShare,
     User,
+    Wish,
 )
 from ..security import current_user
 from .lists import (
@@ -41,6 +43,7 @@ from .lists import (
     visible_occasion,
     visible_recipient,
 )
+from .wishes import occasion_wishes  # noqa: E402
 
 router = APIRouter(prefix="/api/occasions", tags=["occasions"])
 
@@ -177,6 +180,8 @@ def create_occasion(body: OccasionCreateIn, user: User = Depends(current_user), 
     people = {p.id: p for p in db.scalars(select(Person).where(Person.id.in_(ids), Person.owner_id == user.id))}
     if len(people) != len(ids):
         raise unprocessable("You can only add your own people.")
+    if any(p.kind == PERSON_ME for p in people.values()):
+        raise unprocessable("Add your own wishes from your wish list rather than as someone you buy for.")
     for pid in ids:
         db.add(_copy_entry(sources.get(pid), o, people[pid], body))
     db.commit()
@@ -226,12 +231,15 @@ def overview(occasion_id: int, user: User = Depends(current_user), db: Session =
         "groups": [{**g, "totals": g["totals"].to_dict(m)} for g in groups.values() if g["recipients"]],
         "to_order": to_order,
         "awaiting_delivery": awaiting,
+        "my_wishes": occasion_wishes(db, user, o.id),
     }
     if can_manage(o, user):
         # What a delete would remove, including entries other people added that you can't see.
         out["delete_impact"] = {
             "recipients": db.scalar(select(func.count()).where(Recipient.occasion_id == o.id)) or 0,
             "gifts": db.scalar(select(func.count(Gift.id)).join(Recipient).where(Recipient.occasion_id == o.id)) or 0,
+            # Your wishes here move to Anytime; nobody else's are revealed.
+            "my_wishes": db.scalar(select(func.count()).where(Wish.occasion_id == o.id, Wish.owner_id == user.id)) or 0,
         }
     return out
 
@@ -296,6 +304,8 @@ def add_recipient(
         person = db.get(Person, body.person_id)
         if person is None or person.owner_id != user.id:
             raise HTTPException(404, "Person not found.")
+        if person.kind == PERSON_ME:
+            raise unprocessable("Add your own wishes from your wish list rather than as someone you buy for.")
         if any(e.occasion_id == o.id for e in person.entries):
             raise HTTPException(status.HTTP_409_CONFLICT, f"{person.name} is already in {o.name}.")
     else:

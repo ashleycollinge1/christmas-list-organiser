@@ -16,6 +16,8 @@ A self-hosted gift planner for the person doing the buying, for Christmases, bir
   - A **Still to order** list sorted by priority.
 - **Wrapping checklist.** Tick gifts off as you wrap them, with where each one is hidden, or print it as a paper checklist.
 - **Occasions: Christmases, birthdays and more.** Any number can be active at once, each with an optional date and countdown. Start a new one from scratch, or bring people in from another occasion, optionally copying their budgets, sharing and gifts. Archive, unarchive or delete occasions; archived ones stay viewable and read-only. The header reads *Christmas List*, *Birthday List* or *Gift List* to match.
+- **My wish list.** Keep track of things *you'd* like, for Anytime or a specific occasion, with running totals. Archive old ideas and restore them later. Share a list as text via the iPhone share sheet, or print it.
+- **Add from Safari on iPhone.** A Shortcut (set-up steps under **Account**) sends any web page to a short form. The server reads the page for the name and price; if a shop blocks that, the name is guessed from the link.
 - **Linked people.** The **People** tab lists everyone you buy for. Their notes (sizes, likes) and category are shared across all their occasions, while budgets and gifts stay per occasion.
 - **Private by default, shareable when needed.** Each person you add is visible only to you. Share them in an occasion with a sibling for joint gifts. Anyone you haven't shared with, admins included, can't see them, and can't see the occasion either.
 - **Accounts.** The admin creates accounts, or sends single-use invite links. Passwords are hashed with Argon2id.
@@ -130,10 +132,11 @@ The budget margin ("on budget" means within ±£5) and categories are managed in
 
 The `backup` service writes pg_dump custom-format files into `BACKUP_PATH`:
 
-- `christmas-YYYY-MM-DD_HHMMSS_startup.dump` every time it starts. Every release changes the backup service's configuration, so upgrading always recreates it, and `web` (which runs migrations) waits until this dump has succeeded.
+- `christmas-YYYY-MM-DD_HHMMSS_before-vX.Y.Z.dump` on the first start of each new version, i.e. just before that version migrates the database. These are **kept permanently** (never pruned): they're what a rollback restores. Every release changes the backup service's configuration, so upgrading always recreates it, and `web` (which runs migrations) waits until this dump has succeeded.
+- `christmas-YYYY-MM-DD_HHMMSS_startup.dump` on every other start.
 - `christmas-YYYY-MM-DD_HHMMSS_nightly.dump` every night at `BACKUP_TIME`.
 
-Dumps older than `BACKUP_KEEP_DAYS` are deleted. Check it with `docker compose logs backup`. If the start-up dump fails, `web` won't start: the log says why. Fix the problem, or set `BACKUP_REQUIRED=false` in an emergency.
+Start-up and nightly dumps older than `BACKUP_KEEP_DAYS` are deleted. Check it with `docker compose logs backup`. If the start-up dump fails, `web` won't start: the log says why. Fix the problem, or set `BACKUP_REQUIRED=false` in an emergency.
 
 Take a backup right now:
 
@@ -141,15 +144,17 @@ Take a backup right now:
 docker compose exec backup sh -c 'pg_dump --format=custom --file=/backups/christmas-manual-$(date +%F).dump'
 ```
 
-Restore one. This replaces the current data:
+Restore one. This replaces **all** current data with the backup:
 
 ```bash
 docker compose stop web
-docker compose exec -T db pg_restore -U xmas -d xmas --clean --if-exists --no-owner < backups/christmas-2026-12-01_030000.dump
-docker compose start web
+docker compose exec backup restore-backup christmas-2026-12-01_030000_nightly.dump
+docker compose up -d
 ```
 
-Use your `POSTGRES_USER` / `POSTGRES_DB` in place of `xmas` if you changed them. Copy the backups folder somewhere off the server too.
+`restore-backup` checks the file is readable and saves the current data as `christmas-<date>_before-restore.dump`. It then rebuilds the database from the backup in a single transaction: either it fully succeeds, or nothing changes. Run it with no arguments to list the available backups.
+
+If the backup came from an **older version**, start that version afterwards (its compose file is in `deploy/compose/`). A newer version would simply migrate it forward again. Copy the backups folder somewhere off the server too.
 
 ### Upgrading
 
@@ -162,7 +167,7 @@ docker compose pull
 docker compose up -d
 ```
 
-The backup service takes a dump first. Then `web` starts and runs any database migrations automatically. To roll back, restore that `_startup.dump` and use the previous version's compose file from `deploy/compose/`; the release notes give the exact commands.
+The backup service takes a `_before-vX.Y.Z.dump` snapshot first. Then `web` starts and runs any database migrations automatically. To roll back, restore that snapshot with `restore-backup` and use the previous version's compose file from `deploy/compose/`; the release notes give the exact commands.
 
 ## Using it
 

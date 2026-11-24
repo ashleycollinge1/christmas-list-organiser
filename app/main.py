@@ -2,17 +2,19 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
+from urllib.parse import quote
 
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select, text
 
 from .common import bootstrap_first_occasion
 from .config import settings
 from .db import SessionLocal
+from .linkpreview import extract_url
 from .models import ROLE_ADMIN, User
-from .routers import admin, auth, lists, occasions, people, users
+from .routers import admin, auth, lists, occasions, people, users, wishes
 from .security import hash_password
 
 log = logging.getLogger("xmas")
@@ -100,6 +102,17 @@ app.include_router(admin.router)
 app.include_router(occasions.router)
 app.include_router(people.router)
 app.include_router(lists.router)
+app.include_router(wishes.router)
+
+
+@app.get("/share", include_in_schema=False)
+def share(url: str | None = None, text: str | None = None):
+    """Entry point for the iOS Shortcut: /share?url=<shared link> opens the add-a-wish form.
+
+    Only extracts the link and redirects to the app; nothing is fetched or saved here.
+    """
+    target = extract_url(url) or extract_url(text) or ""
+    return RedirectResponse(f"/#/add?url={quote(target, safe='')}", status_code=303)
 
 
 @app.get("/healthz", include_in_schema=False)

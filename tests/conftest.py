@@ -47,7 +47,7 @@ def client(migrated):
     with engine.begin() as c:
         c.execute(
             text(
-                "TRUNCATE users, sessions, invites, app_settings, categories, seasons, people, "
+                "TRUNCATE users, sessions, invites, app_settings, categories, seasons, people, wishes, "
                 "recipients, recipient_shares, gifts RESTART IDENTITY CASCADE"
             )
         )

@@ -5,6 +5,7 @@ import {
   meter, budgetLine, statusDots, statusPill, changeStatus, giftMeta, trackingChip, deliveryChip,
   openAddPersonSheet, openGiftSheet, archivedBanner, occasionMenu, setArchived,
 } from "../components.js";
+import { myWishesCard } from "../wishes.js";
 
 export async function render(main, ctx) {
   const occasionId = Number(ctx.params[0]);
@@ -60,6 +61,7 @@ export async function render(main, ctx) {
       ro && archivedBanner(o, async () => { await setArchived(o, false); load(); }),
       head,
       hero,
+      data.my_wishes && myWishesCard(o, data.my_wishes, { onChanged: () => load() }),
       jump,
       peopleSection(ro),
       data.awaiting_delivery.length > 0 && awaitingSection(ro),
