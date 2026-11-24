@@ -375,7 +375,8 @@ export async function openRecipientSheet({ recipient, me, onSaved, onRemoved }) 
 /** Add someone to an occasion: one of your people, or someone new. */
 export async function openAddPersonSheet({ occasion, me, onSaved }) {
   const [cats, users, { people }] = await Promise.all([categories({ fresh: true }), directory(), api("/api/people")]);
-  const available = people.filter((p) => !p.entries.some((e) => e.occasion.id === occasion.id));
+  // "Me" isn't someone you buy for: your wishes have their own list.
+  const available = people.filter((p) => p.kind !== "me" && !p.entries.some((e) => e.occasion.id === occasion.id));
   const others = users.filter((p) => p.id !== me.id);
   let mode = available.length ? "existing" : "new";
 
@@ -424,14 +425,35 @@ export async function openAddPersonSheet({ occasion, me, onSaved }) {
   });
 }
 
-/** Create or edit a person on the People page. */
-export async function openPersonSheet({ person, onSaved }) {
+/** Create or edit a person on the People page. `canBeMe` offers the "Me" type for a new person. */
+export async function openPersonSheet({ person, canBeMe = false, me, onSaved }) {
   const cats = await categories({ fresh: true });
-  const p = person || { name: "", notes: "", category: null, entries: [] };
+  const p = person || { kind: "recipient", name: "", notes: "", category: null, entries: [] };
+  let kind = p.kind;
   return openSheet({
-    title: person ? person.name : "New person",
+    title: person ? (person.kind === "me" ? "About me" : person.name) : "New person",
     saveLabel: person ? "Save" : "Add",
     build(form, { close }) {
+      if (!person && canBeMe) {
+        form.append(h("div.field", h("span.label", "Type"), segmented("ptype",
+          [{ value: "recipient", label: "Someone I buy for" }, { value: "me", label: "Me (my wish list)" }], kind, {
+            label: "Type",
+            onchange: (v) => {
+              kind = v;
+              const cat = form.category_id?.closest(".field");
+              if (cat) cat.hidden = v === "me";
+              if (v === "me" && !form.name.value.trim()) form.name.value = me?.name || "";
+            },
+          })));
+      }
+      if (kind === "me") {
+        form.append(
+          field("Name", textInput("name", p.name, { required: true, maxlength: 80, autocapitalize: "words" })),
+          field("Sizes & notes", h("textarea.input", { name: "notes", rows: 4, maxlength: 4000, value: p.notes ?? "", placeholder: "e.g. Medium tops, size 9 shoes, love dark chocolate" }), {
+            optional: true, hint: "Included when you share your wish list.",
+          }));
+        return;
+      }
       form.append(...personFields(p, cats, { hint: person && p.entries.length > 1 ? "Shown in every occasion they're in." : null }).filter(Boolean));
       if (person) {
         form.append(h("div.field", h("span.label", "Occasions"),
@@ -461,6 +483,8 @@ export async function openPersonSheet({ person, onSaved }) {
     },
     async onSave(form) {
       const body = readPersonFields(form);
+      if (kind === "me") delete body.category_id;
+      if (!person) body.kind = kind;
       const res = person
         ? await api(`/api/people/${person.id}`, { method: "PATCH", body })
         : await api("/api/people", { method: "POST", body });
@@ -487,7 +511,8 @@ function suggestName(kind, personNames, existing = [], dateValue = "") {
 
 /** New occasion: type, name, date, and who to bring in (optionally copying from another occasion). */
 export async function openNewOccasionSheet({ onSaved }) {
-  const [{ people }, { occasions }] = await Promise.all([api("/api/people"), api("/api/occasions")]);
+  const [{ people: everyone }, { occasions }] = await Promise.all([api("/api/people"), api("/api/occasions")]);
+  const people = everyone.filter((p) => p.kind !== "me");
   let kind = "christmas";
   let nameTouched = false;
 
@@ -616,8 +641,9 @@ export async function occasionMenu(data, { onChanged, onDeleted }) {
     if (value === "delete") {
       const d = data.delete_impact || { recipients: 0, gifts: 0 };
       const parts = [d.recipients && `${d.recipients} ${d.recipients === 1 ? "entry" : "entries"}`, d.gifts && `${d.gifts} gift${d.gifts === 1 ? "" : "s"}`].filter(Boolean);
+      const wishes = d.my_wishes ? ` Your ${d.my_wishes} wish${d.my_wishes === 1 ? "" : "es"} here will move to Anytime.` : "";
       const ok = await confirmDialog(`Delete ${o.name}?`,
-        `${parts.length ? `This permanently deletes ${parts.join(" and ")} in it. ` : ""}Your People are kept. ${o.is_archived ? "" : "Archiving keeps everything instead."}`, "Delete");
+        `${parts.length ? `This permanently deletes ${parts.join(" and ")} in it. ` : ""}Your People are kept.${wishes} ${o.is_archived ? "" : "Archiving keeps everything instead."}`, "Delete");
       if (!ok) return;
       await api(`/api/occasions/${o.id}`, { method: "DELETE" });
       toast(`${o.name} deleted`);

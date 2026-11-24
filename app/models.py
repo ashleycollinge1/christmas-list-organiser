@@ -14,6 +14,7 @@ from sqlalchemy import (
     String,
     Text,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -137,14 +138,23 @@ class Occasion(Base):
     __table_args__ = (CheckConstraint("kind IN ('christmas','birthday','other')", name="ck_seasons_kind"),)
 
 
+PERSON_RECIPIENT = "recipient"
+PERSON_ME = "me"
+PERSON_KINDS = (PERSON_RECIPIENT, PERSON_ME)
+
+
 class Person(Base):
-    """Someone you buy for. Linked across occasions: notes and category live here,
-    so editing Molly's sizes once updates every occasion she's in. Private to the owner."""
+    """Someone you buy for, or "me" (your own wish list). Linked across occasions:
+    notes and category live here, so editing Molly's sizes once updates every
+    occasion she's in. Private to the owner."""
 
     __tablename__ = "people"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(
+        String(16), nullable=False, default=PERSON_RECIPIENT, server_default=PERSON_RECIPIENT
+    )
     name: Mapped[str] = mapped_column(String(80), nullable=False)
     notes: Mapped[str | None] = mapped_column(Text)
     category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"))
@@ -153,6 +163,16 @@ class Person(Base):
     owner: Mapped[User] = relationship(lazy="joined")
     category: Mapped[Category | None] = relationship(lazy="joined")
     entries: Mapped[list[Recipient]] = relationship(back_populates="person", lazy="selectin")
+
+    __table_args__ = (
+        CheckConstraint("kind IN ('recipient','me')", name="ck_people_kind"),
+        # One "me" per account.
+        Index("uq_people_one_me", "owner_id", unique=True, postgresql_where=text("kind = 'me'")),
+    )
+
+    @property
+    def is_me(self) -> bool:
+        return self.kind == PERSON_ME
 
 
 class Recipient(Base):
@@ -248,4 +268,36 @@ class Gift(Base):
             "status IN ('idea','ordered','delivered','wrapped','given')",
             name="ck_gift_status",
         ),
+    )
+
+
+class Wish(Base):
+    """Something you'd like. Belongs to your "me" person, either Anytime
+    (occasion_id NULL) or a specific occasion. Never counts towards spending.
+    If its occasion is deleted, it falls back to Anytime rather than being lost."""
+
+    __tablename__ = "wishes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    person_id: Mapped[int] = mapped_column(ForeignKey("people.id"), nullable=False, index=True)
+    occasion_id: Mapped[int | None] = mapped_column(ForeignKey("seasons.id", ondelete="SET NULL"), index=True)
+    description: Mapped[str] = mapped_column(String(200), nullable=False)
+    link: Mapped[str | None] = mapped_column(String(2048))
+    price_pence: Mapped[int | None] = mapped_column(Integer)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    priority: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=PRIORITY_MEDIUM)
+    notes: Mapped[str | None] = mapped_column(Text)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    occasion: Mapped[Occasion | None] = relationship(lazy="joined")
+
+    __table_args__ = (
+        CheckConstraint("quantity >= 1", name="ck_wish_quantity"),
+        CheckConstraint("price_pence IS NULL OR price_pence >= 0", name="ck_wish_price"),
+        CheckConstraint("priority BETWEEN 1 AND 3", name="ck_wish_priority"),
     )

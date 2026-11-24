@@ -4,6 +4,8 @@ import * as loginView from "./views/login.js";
 import * as homeView from "./views/home.js";
 import * as occasionView from "./views/occasion.js";
 import * as peopleView from "./views/people.js";
+import * as meView from "./views/me.js";
+import * as addView from "./views/add.js";
 import * as recipientView from "./views/recipient.js";
 import * as wrapView from "./views/wrap.js";
 import * as adminView from "./views/admin.js";
@@ -28,6 +30,9 @@ const routes = [
   { pattern: /^\/o\/(\d+)$/, view: occasionView, nav: "home" },
   { pattern: /^\/r\/(\d+)$/, view: recipientView, nav: "home" },
   { pattern: /^\/people$/, view: peopleView, nav: "people" },
+  { pattern: /^\/me$/, view: meView, nav: "people" },
+  // The iOS Shortcut's form: no tab bar, so it fits the share overlay.
+  { pattern: /^\/add$/, view: addView },
   { pattern: /^\/wrap$/, view: wrapView, nav: "wrap" },
   { pattern: /^\/admin$/, view: adminView, nav: "admin", admin: true },
   { pattern: /^\/account$/, view: accountView, nav: "account" },
@@ -108,6 +113,13 @@ function setSession(user, csrf) {
   if (csrf) setCsrf(csrf);
 }
 
+/** Where to go once signed in: the page that asked for login, or Home. */
+function afterLogin() {
+  const next = sessionStorage.getItem("afterLogin");
+  sessionStorage.removeItem("afterLogin");
+  return next && next.startsWith("/") ? next : "/";
+}
+
 async function route() {
   const { path, query, key } = parseHash();
   let match = null;
@@ -121,7 +133,11 @@ async function route() {
   if (!match) return navigate("/", { replace: true });
 
   const user = session.user;
-  if (!match.public && !user) return navigate("/login", { replace: true });
+  if (!match.public && !user) {
+    // Come back here after signing in (e.g. the share form opened by the iOS Shortcut).
+    if (path !== "/") sessionStorage.setItem("afterLogin", key);
+    return navigate("/login", { replace: true });
+  }
   if (user?.must_change_password && match.mode !== "password") return navigate("/password", { replace: true });
   if (match.public && user && !match.mode) return navigate("/", { replace: true });
   if (match.mode === "invite" && user) return navigate("/", { replace: true });
@@ -138,7 +154,7 @@ async function route() {
   window.scrollTo(0, 0);
   try {
     cleanup = (await match.view.render(main, {
-      session, params, query, mode: match.mode, navigate, setSession, signOut, setOccasion,
+      session, params, query, mode: match.mode, navigate, setSession, signOut, setOccasion, afterLogin,
     })) || null;
     const y = scrollMemory.get(key);
     if (y) window.scrollTo(0, y);

@@ -97,13 +97,36 @@ services:
             echo "backup: FAILED" >&2
             ok=1
           fi
-          find /backups -maxdepth 1 -name 'christmas-*.dump' -mtime +"$$BACKUP_KEEP_DAYS" -print -delete | sed 's/^/backup: pruned /'
+          # The one-off "before-vX.Y.Z" dumps are kept: they're what a rollback restores.
+          find /backups -maxdepth 1 -name 'christmas-*.dump' ! -name '*_before-v*' -mtime +"$$BACKUP_KEEP_DAYS" -print -delete | sed 's/^/backup: pruned /'
           return $$ok
         }
+        # restore-backup FILE: replace the whole database with a dump, atomically.
+        # Saves a safety copy first; on any error nothing changes.
+        cat > /usr/local/bin/restore-backup <<'RESTORE'
+        #!/bin/sh
+        set -eu
+        [ $$# -eq 1 ] || { echo "usage: restore-backup <file in the backups folder>"; ls -1 /backups; exit 2; }
+        case "$$1" in /*) f="$$1" ;; *) f="/backups/$$1" ;; esac
+        [ -f "$$f" ] || { echo "No such backup: $$f"; ls -1 /backups; exit 1; }
+        pg_restore --list "$$f" >/dev/null || { echo "$$f is not a readable backup."; exit 1; }
+        safety="/backups/christmas-$$(date +%Y-%m-%d_%H%M%S)_before-restore.dump"
+        pg_dump --format=custom --file="$$safety"
+        echo "Safety copy of the current data: $$safety"
+        psql -qAt -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = current_database() AND pid <> pg_backend_pid()" >/dev/null
+        { echo "SET client_min_messages = warning; DROP SCHEMA public CASCADE; CREATE SCHEMA public;"; pg_restore --no-owner --file=- "$$f"; } \
+          | psql -q -v ON_ERROR_STOP=1 --single-transaction >/dev/null
+        echo "Restored $$f."
+        echo "Now start the version that made it, e.g.: docker compose up -d"
+        RESTORE
+        chmod 0755 /usr/local/bin/restore-backup
         trap 'exit 0' TERM INT
         rm -f /tmp/ready
-        echo "backup: start-up dump ($$BACKUP_FOR_VERSION), then daily at $$BACKUP_TIME ($$TZ), keeping $$BACKUP_KEEP_DAYS days"
-        if backup startup; then
+        # The first start of a new version keeps a named copy: christmas-<date>_before-vX.Y.Z.dump.
+        label=startup
+        ls /backups/christmas-*_before-"$$BACKUP_FOR_VERSION".dump >/dev/null 2>&1 || label="before-$$BACKUP_FOR_VERSION"
+        echo "backup: start-up dump ($$label), then daily at $$BACKUP_TIME ($$TZ), keeping $$BACKUP_KEEP_DAYS days"
+        if backup "$$label"; then
           touch /tmp/ready
         elif [ "$$BACKUP_REQUIRED" = "false" ]; then
           echo "backup: start-up dump failed; BACKUP_REQUIRED=false, so web may start anyway" >&2

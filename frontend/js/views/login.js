@@ -68,7 +68,7 @@ function renderLogin(host, ctx) {
       try {
         const res = await api("/api/auth/login", { method: "POST", body: { username, password } });
         ctx.setSession(res.user, res.csrf_token);
-        ctx.navigate(res.user.must_change_password ? "/password" : "/");
+        ctx.navigate(res.user.must_change_password ? "/password" : ctx.afterLogin());
       } catch (ex) {
         err.append(formError(ex.message));
         form.password.value = "";
@@ -108,7 +108,7 @@ function renderPassword(host, ctx) {
           body: { current_password: form.current.value, new_password: form.next.value },
         });
         ctx.setSession(res.user);
-        ctx.navigate("/");
+        ctx.navigate(ctx.afterLogin());
       } catch (ex) {
         err.append(formError(ex.message));
       }

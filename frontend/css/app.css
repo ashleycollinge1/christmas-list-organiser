@@ -1151,6 +1151,77 @@ select.input {
 
 .action-item.is-danger { color: var(--over); }
 
+/* ------------------------------------------------------------ wish list */
+
+.wish-card {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid color-mix(in srgb, #9c3d6e 25%, var(--line));
+  background: linear-gradient(180deg, color-mix(in srgb, #9c3d6e 5%, #fffdf8), var(--card));
+  display: grid;
+  gap: 10px;
+}
+.wish-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.wish-card-head p { margin: 2px 0 0; }
+.wish-card-title { display: flex; align-items: center; gap: 8px; margin: 0; font: 600 20px/1.2 var(--display); }
+.wish-card-title .icon { color: #9c3d6e; }
+.wish-mini { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 15px; }
+.wish-mini li { display: flex; justify-content: space-between; gap: 10px; }
+.wish-mini li span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.me-card { border-color: color-mix(in srgb, #9c3d6e 30%, var(--line)); background: linear-gradient(180deg, color-mix(in srgb, #9c3d6e 5%, #fffdf8), var(--card)); margin-bottom: 18px; }
+.me-card .person-name { display: inline-flex; align-items: center; gap: 8px; }
+.me-card .person-name .icon { color: #9c3d6e; }
+.me-card .icon:last-child { color: var(--ink-2); }
+
+.wish-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.wish {
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--card);
+  box-shadow: var(--shadow);
+  padding: 4px;
+}
+.wish.is-archived { background: var(--card-2); box-shadow: none; }
+.wish-main {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.wish-main:active { background: var(--card-2); }
+.wish-title { font: 600 18px/1.25 var(--display); overflow-wrap: anywhere; }
+.wish-chips { padding: 0 12px 10px; }
+.wish-group .group-head { align-items: center; }
+.sheet-actions { margin-top: 20px; }
+
+.reading { display: flex; align-items: center; gap: 8px; margin: -8px 0 0; font-size: 14px; color: var(--ink-2); min-height: 20px; }
+.reading:empty { display: none; }
+.reading .icon { width: 16px; height: 16px; flex: none; }
+.reading .spinner { width: 14px; height: 14px; }
+.reading.is-ok { color: var(--s-wrapped); }
+.reading.is-warn { color: #8a5a00; align-items: flex-start; }
+.reading.is-warn .icon { margin-top: 2px; }
+.btn-lg { min-height: 54px; font-size: 17px; }
+.add-page .form { gap: 18px; }
+
+.done-card { display: grid; justify-items: center; gap: 14px; padding: 40px 4px; text-align: center; }
+.done-card .stack { width: 100%; max-width: 360px; }
+.done-tick { display: grid; place-items: center; width: 72px; height: 72px; border-radius: 50%; background: var(--s-wrapped); color: #fff; }
+.done-tick .icon { width: 40px; height: 40px; stroke-width: 2.4; }
+.is-warn { color: #8a5a00; }
+
+.shortcut-card { display: grid; gap: 12px; }
+.shortcut-card p { margin: 0; }
+.steps { margin: 0; padding-left: 22px; display: grid; gap: 8px; }
+
 /* ------------------------------------------------------------ motion */
 
 .reveal { animation: rise 0.5s var(--ease) both; animation-delay: calc(var(--i, 0) * 55ms); }

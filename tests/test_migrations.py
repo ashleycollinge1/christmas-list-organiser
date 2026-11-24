@@ -157,3 +157,39 @@ def test_downgrade_refuses_with_several_active(v010_db):
         c.execute(text("INSERT INTO seasons (name, is_archived) VALUES ('Second', false)"))
     with pytest.raises(RuntimeError, match="active"):
         command.downgrade(_cfg(), "0001")
+
+
+TABLES_V020 = TABLES_V010 + ["people"]
+
+
+def test_upgrade_0002_to_head_preserves_everything(v010_db):
+    """v0.2.0 -> v0.3.0: every row and value at 0002 is unchanged; people become 'recipient'."""
+    command.upgrade(_cfg(), "0002")
+    with v010_db.begin() as c:
+        # Some v0.2.0-era data on top: a birthday occasion with a dated, non-Christmas kind.
+        c.execute(text("INSERT INTO seasons (name, kind, occasion_date, is_archived, created_by_id) "
+                       "VALUES ('Molly birthday', 'birthday', '2027-03-14', false, 1)"))  # fmt: skip
+    with v010_db.connect() as c:
+        before = _snapshot(c, TABLES_V020)
+
+    command.upgrade(_cfg(), "head")
+
+    with v010_db.connect() as c:
+        after = _snapshot(c, TABLES_V020)
+        for table, rows in before.items():
+            assert len(after[table]) == len(rows), table
+            for old, new in zip(rows, after[table], strict=True):
+                for col, val in old.items():
+                    assert new[col] == val, f"{table}.{col} changed: {val!r} -> {new[col]!r}"
+        assert {r["kind"] for r in after["people"]} == {"recipient"}
+        assert c.execute(text("SELECT count(*) FROM wishes")).scalar_one() == 0
+
+
+def test_downgrade_0003_refuses_when_wishes_exist(v010_db):
+    command.upgrade(_cfg(), "head")
+    with v010_db.begin() as c:
+        c.execute(text("INSERT INTO people (owner_id, kind, name) VALUES (1, 'me', 'Ashley')"))
+        c.execute(text("INSERT INTO wishes (owner_id, person_id, description, quantity, priority) "
+                       "SELECT 1, id, 'Book', 1, 2 FROM people WHERE kind = 'me'"))  # fmt: skip
+    with pytest.raises(RuntimeError, match="wishes"):
+        command.downgrade(_cfg(), "0002")

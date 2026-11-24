@@ -87,7 +87,7 @@ def test_overview_lists_and_groups(api):
     assert [x["description"] for x in o["to_order"]] == ["High prio", "Low prio"]
     assert [x["description"] for x in o["awaiting_delivery"]] == ["Soon", "Late", "Undated"]
     assert o["totals"]["budget_pence"] == 30000
-    assert o["delete_impact"] == {"recipients": 2, "gifts": 5}
+    assert o["delete_impact"] == {"recipients": 2, "gifts": 5, "my_wishes": 0}
 
     api.delete(f"/api/categories/{cat['id']}")
     o = api.get(f"/api/occasions/{oid}/overview").json()
