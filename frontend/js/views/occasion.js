@@ -5,7 +5,7 @@ import {
   meter, budgetLine, statusDots, statusPill, changeStatus, giftMeta, trackingChip, deliveryChip,
   openAddPersonSheet, openGiftSheet, archivedBanner, occasionMenu, setArchived,
 } from "../components.js";
-import { myWishesCard } from "../wishes.js";
+import { myWishesCard, myWishesSection, openWishSheet } from "../wishes.js";
 import { searchBox, searchSummary, matches } from "../listtools.js";
 
 export async function render(main, ctx) {
@@ -69,6 +69,27 @@ export async function render(main, ctx) {
     const searching = Boolean(search.query.trim());
     const finder = (people > 0) && searchBox(search, { placeholder: "Search people and gifts", label: "Search this occasion", onInput: draw });
 
+    // Nobody to buy for here, just your own wishes: lead with your wish list.
+    const justMe = people === 0 && data.my_wishes?.count > 0;
+    if (justMe) {
+      const parts = [
+        ro && archivedBanner(o, async () => { await setArchived(o, false); load(); }),
+        head,
+        myWishesSection(o, data.my_wishes, { onChanged: () => load() }),
+        !ro && h("p.muted.small.center", "Buying for someone too? ",
+          h("button.btn-text", { type: "button", onclick: addPerson }, "Add a person")),
+      ].filter(Boolean);
+      reveal(parts);
+      page.append(...parts);
+      queueMicrotask(() => page.classList.add("settled"));
+      if (!ro) {
+        page.append(h("div.fab-wrap", h("button.btn.btn-primary.fab", {
+          type: "button", onclick: () => openWishSheet({ occasionId: o.id, onSaved: () => load() }),
+        }, icon("plus"), "Add a wish")));
+      }
+      return;
+    }
+
     const sections = [
       ro && archivedBanner(o, async () => { await setArchived(o, false); load(); }),
       head,
@@ -90,13 +111,13 @@ export async function render(main, ctx) {
     if (!ro) {
       page.append(h("div.fab-wrap", h("button.btn.btn-primary.fab", {
         type: "button",
-        onclick: () => openAddPersonSheet({
-          occasion: data.occasion,
-          me: ctx.session.user,
-          onSaved: (r) => ctx.navigate(`/r/${r.id}`),
-        }),
+        onclick: addPerson,
       }, icon("plus"), "Add person")));
     }
+  }
+
+  function addPerson() {
+    openAddPersonSheet({ occasion: data.occasion, me: ctx.session.user, onSaved: (r) => ctx.navigate(`/r/${r.id}`) });
   }
 
   function jumpTo(id) {

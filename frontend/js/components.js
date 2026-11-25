@@ -510,9 +510,11 @@ function suggestName(kind, personNames, existing = [], dateValue = "") {
 }
 
 /** New occasion: type, name, date, and who to bring in (optionally copying from another occasion). */
-export async function openNewOccasionSheet({ onSaved }) {
-  const [{ people: everyone }, { occasions }] = await Promise.all([api("/api/people"), api("/api/occasions")]);
+export async function openNewOccasionSheet({ me, onSaved }) {
+  const [{ people: everyone }, { occasions }, wishData] = await Promise.all([api("/api/people"), api("/api/occasions"), api("/api/wishes")]);
   const people = everyone.filter((p) => p.kind !== "me");
+  const myName = everyone.find((p) => p.kind === "me")?.name || me?.name || "My";
+  const anytime = wishData.wishes.filter((w) => !w.archived && !w.occasion);
   let kind = "christmas";
   let nameTouched = false;
 
@@ -522,7 +524,11 @@ export async function openNewOccasionSheet({ onSaved }) {
     build(form) {
       const nameInput = textInput("name", suggestName(kind, [], occasions.map((o) => o.name)), { required: true, maxlength: 80, autocapitalize: "words" });
       nameInput.addEventListener("input", () => { nameTouched = true; });
-      const picked = () => people.filter((p) => form.querySelector(`input[name="person"][value="${p.id}"]`)?.checked);
+      const meBox = h("input", { type: "checkbox", name: "include_me" });
+      const picked = () => [
+        ...(meBox.checked ? [{ name: myName }] : []),
+        ...people.filter((p) => form.querySelector(`input[name="person"][value="${p.id}"]`)?.checked),
+      ];
       const dateInput = h("input.input.input-date", { type: "date", name: "date" });
       let dateTouched = false;
       dateInput.addEventListener("input", () => { dateTouched = true; refreshName(); });
@@ -545,6 +551,20 @@ export async function openNewOccasionSheet({ onSaved }) {
             h("input", { type: "checkbox", name, checked: on }),
             h("span.check-box", { "aria-hidden": "true" }, icon("check")), h("span", label))),
         h("p.hint", "Names, notes and categories are linked, so they always come along."));
+      // Me: this occasion holds your wish list. Tick which Anytime wishes move into it.
+      const wishPicks = h("fieldset.fieldset.copy-opts", { hidden: true },
+        h("legend.label", "Bring in my Anytime wishes"),
+        anytime.length
+          ? anytime.map((w) => h("label.check-row",
+            h("input", { type: "checkbox", name: "wish", value: String(w.id), checked: true }),
+            h("span.check-box", { "aria-hidden": "true" }, icon("check")),
+            h("span.radio-text", h("span.radio-title", w.description), w.price_pence != null && h("span.radio-sub", money(w.price_pence)))))
+          : h("p.hint", "You have no Anytime wishes yet. Add wishes to this occasion once it's created."),
+        anytime.length > 0 && h("p.hint", "Ticked wishes move here; unticked ones stay in Anytime."));
+      meBox.addEventListener("change", () => { wishPicks.hidden = !meBox.checked; refreshName(); });
+      const meRow = h("label.check-row.me-pick", meBox,
+        h("span.check-box", { "aria-hidden": "true" }, icon("check")),
+        h("span.radio-text", h("span.radio-title", "Me"), h("span.radio-sub", "My wish list for this occasion")));
       const list = h("div.people-picks",
         people.length
           ? people.map((p) => h("label.check-row",
@@ -572,6 +592,8 @@ export async function openNewOccasionSheet({ onSaved }) {
         h("h3.form-section", "Who's it for?"),
         people.length > 0 && occasions.length > 0 && field("Bring people in from", copyFrom),
         copyOpts,
+        h("div.people-picks", meRow),
+        wishPicks,
         list,
       );
       refreshName();
@@ -589,6 +611,8 @@ export async function openNewOccasionSheet({ onSaved }) {
         copy_budgets: form.copy_budgets.checked,
         copy_sharing: form.copy_sharing.checked,
         copy_gifts: form.copy_gifts.checked,
+        include_me: form.include_me.checked,
+        wish_ids: form.include_me.checked ? Array.from(form.querySelectorAll('input[name="wish"]:checked')).map((i) => Number(i.value)) : [],
       };
       const res = await api("/api/occasions", { method: "POST", body });
       toast(`${res.occasion.name} created`);

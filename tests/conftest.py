@@ -30,7 +30,11 @@ def migrated():
 
     cfg = Config("alembic.ini")
     cfg.attributes["configure_logger"] = False
-    command.downgrade(cfg, "base")
+    # Start from an empty schema (downgrades deliberately refuse to drop real-looking data).
+    from sqlalchemy import create_engine, text
+
+    with create_engine(os.environ["DATABASE_URL"]).begin() as c:
+        c.execute(text("DROP SCHEMA public CASCADE; CREATE SCHEMA public"))
     command.upgrade(cfg, "head")
     yield
 

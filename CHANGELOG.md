@@ -2,6 +2,27 @@
 
 Each release's section is published as its GitHub Release notes. **Upgrade steps** always come first. Releases are cumulative, so you can upgrade straight from any older version. If you skip versions, follow every skipped version's upgrade steps, oldest first.
 
+## v0.5.0
+
+### Upgrade steps
+
+1. Replace `docker-compose.yml` with the new one (attached to this release, or `curl -fsSLO https://raw.githubusercontent.com/ashleycollinge1/christmas-list-organiser/stable/docker-compose.yml`).
+2. `docker compose pull && docker compose up -d`
+
+No database changes, so no migration. To roll back, use the v0.4.1 compose file and `docker compose up -d`; no restore is needed.
+
+### What's new
+
+- **Occasions for yourself.** In **New occasion → Who's it for?**, tick **Me (my wish list)** at the top.
+  - With Birthday selected, the name suggests itself, e.g. *"Ashley's birthday 2027"*.
+  - **Bring in my Anytime wishes** lists your Anytime wishes, all ticked. Ticked ones move into the new occasion; untick any you want to keep in Anytime. You can move them back later, in bulk if you like.
+  - You can tick Me *and* other people, e.g. for a joint birthday.
+- **An occasion that's just for you leads with your wish list:** every wish, the total, Share, and *Add a wish*. There's no empty budget, and a small *Add a person* link if you're buying for someone too. On Home, its card shows *My wish list · 2 wishes · £40*.
+
+### Changed
+
+- The *My wish list* card on an occasion page still shows your top three; the full list is one tap away.
+
 ## v0.4.1
 
 ### Upgrade steps

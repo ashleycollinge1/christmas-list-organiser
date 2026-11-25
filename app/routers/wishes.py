@@ -96,7 +96,12 @@ def occasion_wishes(db: Session, user: User, occasion_id: int) -> dict | None:
         ).all(),
         key=sort_key,
     )
-    return {**summarise(wishes), "items": [wish_out(w) for w in wishes[:3]]}
+    # All of them: an occasion that's just for you shows the full list.
+    return {
+        **summarise(wishes),
+        "items": [wish_out(w) for w in wishes],
+        "me": {"name": me.name, "notes": me.notes},
+    }
 
 
 def _mine(db: Session, user: User, wish_id: int) -> Wish:
