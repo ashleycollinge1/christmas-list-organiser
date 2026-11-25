@@ -2,6 +2,19 @@
 
 Each release's section is published as its GitHub Release notes. **Upgrade steps** always come first. Releases are cumulative, so you can upgrade straight from any older version. If you skip versions, follow every skipped version's upgrade steps, oldest first.
 
+## v0.4.1
+
+### Upgrade steps
+
+1. Replace `docker-compose.yml` with the new one (attached to this release, or `curl -fsSLO https://raw.githubusercontent.com/ashleycollinge1/christmas-list-organiser/stable/docker-compose.yml`).
+2. `docker compose pull && docker compose up -d`
+
+No database changes, so no migration. To roll back, use the v0.4.0 compose file and `docker compose up -d`; no restore is needed.
+
+### Fixed
+
+- **The Wrapping checklist only lists gifts you actually have:** Delivered, Wrapped and Given. Ordered and Reorder gifts are left off until they're marked Delivered, and a line says how many are still on their way. Previously, tapping *N delivered* on an occasion opened a checklist that also included undelivered gifts.
+
 ## v0.4.0
 
 ### Upgrade steps
