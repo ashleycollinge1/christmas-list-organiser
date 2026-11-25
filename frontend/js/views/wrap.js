@@ -5,7 +5,8 @@ import { archivedBanner, setArchived } from "../components.js";
 
 const HIDE_KEY = "wrap.hideDone";
 const LAST_KEY = "wrap.occasion";
-const WRAPPABLE = new Set(["ordered", "reorder", "delivered", "wrapped", "given"]);
+// Only gifts you actually have: delivered onwards. Ordered or reordered ones are still on their way.
+const WRAPPABLE = new Set(["delivered", "wrapped", "given"]);
 const DONE = new Set(["wrapped", "given"]);
 
 export async function render(main, ctx) {
@@ -48,11 +49,11 @@ export async function render(main, ctx) {
     const people = [];
     let total = 0;
     let done = 0;
-    let ideas = 0;
+    let notHere = 0;
     for (const g of data.groups) {
       for (const r of g.recipients) {
         const gifts = r.gifts.filter((x) => WRAPPABLE.has(x.status));
-        ideas += r.gifts.length - gifts.length;
+        notHere += r.gifts.filter((x) => ["ordered", "reorder"].includes(x.status)).length;
         if (!gifts.length) continue;
         total += gifts.length;
         done += gifts.filter((x) => DONE.has(x.status)).length;
@@ -70,7 +71,7 @@ export async function render(main, ctx) {
         h("p.wrap-count", h("strong", String(done)), ` of ${total} wrapped`),
         h("div.meter.meter-lg.state-on", { role: "progressbar", "aria-valuemin": "0", "aria-valuemax": String(total), "aria-valuenow": String(done), "aria-label": "Wrapped" },
           h("span.meter-spent", { style: { width: `${pct}%` } }))),
-      ideas > 0 && h("p.muted.small", `${ideas} idea${ideas === 1 ? "" : "s"} not ordered yet ${ideas === 1 ? "isn't" : "aren't"} listed.`));
+      notHere > 0 && h("p.muted.small", `${notHere} gift${notHere === 1 ? " is" : "s are"} ordered but not delivered yet, so ${notHere === 1 ? "isn't" : "aren't"} listed.`));
 
     const toggle = total > 0 && h("label.switch-row.no-print",
       h("input", { type: "checkbox", role: "switch", checked: hideDone, onchange: (e) => {
@@ -88,7 +89,7 @@ export async function render(main, ctx) {
       parts.push(h("div.empty",
         h("span.empty-star", { "aria-hidden": "true" }),
         h("h3", "Nothing to wrap yet"),
-        h("p.muted", "Gifts appear here once they're marked Ordered.")));
+        h("p.muted", "Gifts appear here once they're marked Delivered.")));
     } else {
       let shown = 0;
       for (const { r, gifts } of people) {
@@ -106,7 +107,7 @@ export async function render(main, ctx) {
         parts.push(h("div.empty",
           h("span.empty-star", { "aria-hidden": "true" }),
           h("h3", "All wrapped"),
-          h("p.muted", "Every ordered gift is wrapped. Time for a mince pie.")));
+          h("p.muted", "Every delivered gift is wrapped. Time for a mince pie.")));
       }
     }
     reveal(parts);
@@ -142,8 +143,6 @@ export async function render(main, ctx) {
           h("span.check-title", g.quantity > 1 ? `${g.description} ×${g.quantity}` : g.description),
           h(`span.check-sub#wd-${g.id}`,
             g.hiding_place ? h("span.hidden-at", icon("pin"), g.hiding_place) : null,
-            g.status === "ordered" && h("span.not-arrived", "Not delivered yet"),
-            g.status === "reorder" && h("span.not-arrived", "Being reordered"),
             given && h("span", STATUS_LABEL.given)))));
   }
 
