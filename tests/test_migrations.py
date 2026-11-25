@@ -193,3 +193,15 @@ def test_downgrade_0003_refuses_when_wishes_exist(v010_db):
                        "SELECT 1, id, 'Book', 1, 2 FROM people WHERE kind = 'me'"))  # fmt: skip
     with pytest.raises(RuntimeError, match="wishes"):
         command.downgrade(_cfg(), "0002")
+
+
+def test_upgrade_0003_to_head_keeps_gifts_and_allows_reorder(v010_db):
+    command.upgrade(_cfg(), "0003")
+    with v010_db.connect() as c:
+        before = _snapshot(c, ["gifts"])
+    command.upgrade(_cfg(), "head")
+    with v010_db.begin() as c:
+        assert _snapshot(c, ["gifts"]) == before
+        c.execute(text("UPDATE gifts SET status = 'reorder' WHERE id = (SELECT min(id) FROM gifts)"))
+    with pytest.raises(RuntimeError, match="reorder"):
+        command.downgrade(_cfg(), "0003")

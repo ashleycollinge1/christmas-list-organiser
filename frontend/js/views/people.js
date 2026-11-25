@@ -1,14 +1,22 @@
 import { api } from "../api.js";
 import { h, icon, reveal, clear, skeletonLines } from "../dom.js";
 import { openPersonSheet } from "../components.js";
+import { searchBox, searchSummary, matches } from "../listtools.js";
 
 export async function render(main, ctx) {
   const page = h("div.page.people");
   page.append(h("div.loading", { "aria-label": "Loading" }, skeletonLines(["w-40"]), skeletonLines(), skeletonLines()));
   main.append(page);
 
+  const search = { query: "" };
+  let everyone = [];
+
   async function load() {
-    const { people: everyone } = await api("/api/people");
+    everyone = (await api("/api/people")).people;
+    draw();
+  }
+
+  function draw() {
     const me = everyone.find((p) => p.kind === "me");
     const people = everyone.filter((p) => p.kind !== "me");
     clear(page);
@@ -28,7 +36,10 @@ export async function render(main, ctx) {
         h("h3", "No one yet"),
         h("p.muted", "Add people here, or straight from an occasion.")));
     } else {
-      parts.push(h("ul.person-list", people.map((p) => {
+      const shown = people.filter((p) => matches(search.query, p.name, p.notes, p.category?.name, ...p.entries.map((e) => e.occasion.name)));
+      parts.push(searchBox(search, { placeholder: "Search people", label: "Search people", onInput: draw }),
+        searchSummary(search, shown.length, people.length, "person", "people"));
+      parts.push(h("ul.person-list", shown.map((p) => {
         const active = p.entries.filter((e) => !e.occasion.is_archived);
         return h("li", h("button.person.person-btn", {
           type: "button",
@@ -44,6 +55,7 @@ export async function render(main, ctx) {
     }
     reveal(parts);
     page.append(...parts);
+    queueMicrotask(() => page.classList.add("settled"));
     page.append(h("div.fab-wrap", h("button.btn.btn-primary.fab", {
       type: "button",
       onclick: () => openPersonSheet({

@@ -3,7 +3,7 @@
 A self-hosted gift planner for the person doing the buying, for Christmases, birthdays and any other occasion. Add the people you're buying for, give each one a budget, and list their gifts. Each gift moves through a traffic light, and the app keeps a running total against every budget.
 
 - **Budgets with a live tally.** Set a budget per person, e.g. Molly £300. Every gift has a price and quantity, and you see what you've **spent** (Ordered onwards), what you've **planned** (including ideas), and whether you're **under, on or over** budget. "On" means within a margin you choose (default ±£5).
-- **Traffic-light status:** Idea → Ordered → Delivered → Wrapped → Given. Tap a status to move it on, or press and hold to pick any stage. Every change can be undone.
+- **Traffic-light status:** Idea → Ordered → Delivered → Wrapped → Given. A purple **Reorder** status marks a delivery that went wrong; it's listed at the top of the occasion until it's sorted. Tap a status to move it on, or press and hold to pick any stage. Every change can be undone.
 - **Gift details:**
   - description, link, price and quantity
   - priority (high, medium or low)
@@ -16,6 +16,7 @@ A self-hosted gift planner for the person doing the buying, for Christmases, bir
   - A **Still to order** list sorted by priority.
 - **Wrapping checklist.** Tick gifts off as you wrap them, with where each one is hidden, or print it as a paper checklist.
 - **Occasions: Christmases, birthdays and more.** Any number can be active at once, each with an optional date and countdown. Start a new one from scratch, or bring people in from another occasion, optionally copying their budgets, sharing and gifts. Archive, unarchive or delete occasions; archived ones stay viewable and read-only. The header reads *Christmas List*, *Birthday List* or *Gift List* to match.
+- **Search and bulk actions.** Search your wish list, people and gifts as you type. Select several items to move, archive, change status or delete them together.
 - **My wish list.** Keep track of things *you'd* like, for Anytime or a specific occasion, with running totals. Archive old ideas and restore them later. Share a list as text via the iPhone share sheet, or print it.
 - **Add from Safari on iPhone.** A Shortcut (set-up steps under **Account**) sends any web page to a short form. The server reads the page for the name and price; if a shop blocks that, the name is guessed from the link.
 - **Linked people.** The **People** tab lists everyone you buy for. Their notes (sizes, likes) and category are shared across all their occasions, while budgets and gifts stay per occasion.

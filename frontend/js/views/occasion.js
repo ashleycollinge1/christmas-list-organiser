@@ -6,6 +6,7 @@ import {
   openAddPersonSheet, openGiftSheet, archivedBanner, occasionMenu, setArchived,
 } from "../components.js";
 import { myWishesCard } from "../wishes.js";
+import { searchBox, searchSummary, matches } from "../listtools.js";
 
 export async function render(main, ctx) {
   const occasionId = Number(ctx.params[0]);
@@ -14,6 +15,7 @@ export async function render(main, ctx) {
   main.append(page);
 
   let data;
+  const search = { query: "" };
   async function load() {
     data = await api(`/api/occasions/${occasionId}/overview`);
     ctx.setOccasion(data.occasion);
@@ -52,10 +54,20 @@ export async function render(main, ctx) {
         t.planned_pence !== t.spent_pence && h("span.muted", ` · ${money(t.planned_pence)} with ideas`)),
       t.gift_count > 0 && h("div.hero-counts", statusDots(t.counts)));
 
+    // Delivered and wrapped have no list here; the Wrapping checklist shows exactly those.
+    const wrapHref = `#/wrap?o=${o.id}`;
+    const n = t.counts;
     const jump = (people > 0) && h("nav.jump", { "aria-label": "Sections" },
       h("a.chip", { href: "#people", onclick: jumpTo("people") }, icon("users"), `${people} ${people === 1 ? "person" : "people"}`),
+      n.reorder > 0 && h("a.chip.status-reorder", { href: "#reorder", onclick: jumpTo("reorder") }, h("span.dot"), `${n.reorder} to reorder`),
+      data.to_order.length > 0 && h("a.chip", { href: "#to-order", onclick: jumpTo("to-order") }, icon("gift"), `${data.to_order.length} to order`),
       data.awaiting_delivery.length > 0 && h("a.chip", { href: "#awaiting", onclick: jumpTo("awaiting") }, icon("truck"), `${data.awaiting_delivery.length} awaiting`),
-      data.to_order.length > 0 && h("a.chip", { href: "#to-order", onclick: jumpTo("to-order") }, icon("gift"), `${data.to_order.length} to order`));
+      n.delivered > 0 && h("a.chip.status-delivered", { href: wrapHref }, h("span.dot"), `${n.delivered} delivered`),
+      n.wrapped > 0 && h("a.chip.status-wrapped", { href: wrapHref }, h("span.dot"), `${n.wrapped} wrapped`));
+
+    const allGifts = data.groups.flatMap((g) => g.recipients.flatMap((r) => r.gifts.map((gift) => ({ ...gift, recipient_name: r.name }))));
+    const searching = Boolean(search.query.trim());
+    const finder = (people > 0) && searchBox(search, { placeholder: "Search people and gifts", label: "Search this occasion", onInput: draw });
 
     const sections = [
       ro && archivedBanner(o, async () => { await setArchived(o, false); load(); }),
@@ -63,12 +75,17 @@ export async function render(main, ctx) {
       hero,
       data.my_wishes && myWishesCard(o, data.my_wishes, { onChanged: () => load() }),
       jump,
-      peopleSection(ro),
-      data.awaiting_delivery.length > 0 && awaitingSection(ro),
-      data.to_order.length > 0 && toOrderSection(ro),
+      finder,
+      ...(searching ? searchResults(ro, allGifts) : [
+        data.needs_reorder.length > 0 && reorderSection(ro),
+        peopleSection(ro),
+        data.awaiting_delivery.length > 0 && awaitingSection(ro),
+        data.to_order.length > 0 && toOrderSection(ro),
+      ]),
     ].filter(Boolean);
     reveal(sections);
     page.append(...sections);
+    queueMicrotask(() => page.classList.add("settled"));
 
     if (!ro) {
       page.append(h("div.fab-wrap", h("button.btn.btn-primary.fab", {
@@ -138,6 +155,25 @@ export async function render(main, ctx) {
       giftMeta(g, { showRecipient: true })),
       statusPill(g, { readOnly: ro, onChange: (s, prev) => changeStatus(g, s, prev, load) }),
       extra?.length > 0 && h("div.chips.mini-chips", extra));
+  }
+
+  function searchResults(ro, allGifts) {
+    const q = search.query;
+    const people = data.groups.flatMap((g) => g.recipients).filter((r) => matches(q, r.name, r.notes, r.category?.name));
+    const gifts = allGifts.filter((g) => matches(q, g.description, g.notes, g.retailer, g.tracking_number, g.hiding_place, g.recipient_name));
+    if (!people.length && !gifts.length) return [searchSummary(search, 0, 1, "person or gift", "people or gifts")];
+    return [
+      people.length > 0 && h("section.section", h("h2.section-title", "People"), h("ul.person-list", people.map(personRow))),
+      gifts.length > 0 && h("section.section", h("h2.section-title", "Gifts", h("span.count-badge", String(gifts.length))),
+        h("ul.mini-list", gifts.map((g) => giftRow(g, ro)))),
+    ];
+  }
+
+  function reorderSection(ro) {
+    return h("section.section#reorder", { "aria-labelledby": "reorder-h" },
+      h("h2.section-title#reorder-h", "Needs reordering"),
+      h("p.muted.small", "Something went wrong with these. Tap the status once the replacement is ordered."),
+      h("ul.mini-list", data.needs_reorder.map((g) => giftRow(g, ro, [trackingChip(g)].filter(Boolean)))));
   }
 
   function awaitingSection(ro) {

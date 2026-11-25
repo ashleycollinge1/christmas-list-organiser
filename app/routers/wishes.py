@@ -213,3 +213,28 @@ def delete_wish(wish_id: int, user: User = Depends(current_user), db: Session = 
     db.delete(w)
     db.commit()
     return {"ok": True}
+
+
+class WishBulkIn(BaseModel):
+    ids: list[int] = Field(min_length=1, max_length=500)
+    action: str = Field(pattern="^(move|archive|restore|delete)$")
+    occasion_id: int | None = None  # move: None = Anytime
+
+
+@router.post("/bulk")
+def bulk_wishes(body: WishBulkIn, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    """Apply one action to several of your wishes, all or nothing."""
+    wishes = [_mine(db, user, wid) for wid in dict.fromkeys(body.ids)]
+    if body.action == "move":
+        target = None if body.occasion_id is None else load_occasion(db, user, body.occasion_id).id
+        for w in wishes:
+            w.occasion_id = target
+    elif body.action in ("archive", "restore"):
+        now = datetime.now(UTC)
+        for w in wishes:
+            w.archived_at = (w.archived_at or now) if body.action == "archive" else None
+    else:
+        for w in wishes:
+            db.delete(w)
+    db.commit()
+    return {"ok": True, "count": len(wishes)}

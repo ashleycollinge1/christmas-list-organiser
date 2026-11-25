@@ -35,6 +35,7 @@
   --s-delivered: #e39a12;
   --s-wrapped: #2e7d4f;
   --s-given: #1c1a1f;
+  --s-reorder: #7b3fa0;
 
   --display: "Fraunces", Georgia, serif;
   --body: "Plex", -apple-system-body, sans-serif;
@@ -358,6 +359,7 @@ body.has-tabbar .page { padding-bottom: calc(var(--tabbar-h) + var(--safe-bottom
 .status-delivered { --c: var(--s-delivered); }
 .status-wrapped { --c: var(--s-wrapped); }
 .status-given { --c: var(--s-given); }
+.status-reorder { --c: var(--s-reorder); }
 .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c, var(--s-idea)); flex: none; }
 
 .pill {
@@ -1265,3 +1267,75 @@ select.input {
   .check-item.is-done .check-title { text-decoration: none; color: #000; }
   .check-text { padding: 5pt 0; }
 }
+
+/* ------------------------------------------------------------ v0.4.0: status grid, search, select, share */
+
+/* Six statuses: three per row so each stays thumb-sized. */
+.seg-status .segmented { grid-auto-flow: row; grid-template-columns: repeat(3, 1fr); }
+
+.search {
+  position: relative;
+  margin: 0 0 14px;
+}
+.search .icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--ink-2); pointer-events: none; }
+.search input { padding-left: 42px; padding-right: 44px; -webkit-appearance: none; appearance: none; }
+.search input::-webkit-search-cancel-button { display: none; }
+.search .search-clear { position: absolute; right: 2px; top: 50%; transform: translateY(-50%); width: 44px; height: 44px; border: 0; background: none; color: var(--ink-2); cursor: pointer; }
+.search .search-clear .icon { position: static; transform: none; margin: auto; }
+.search-empty { padding: 18px 4px; color: var(--ink-2); }
+.search-count { margin: -6px 2px 10px; font-size: 14px; color: var(--ink-2); }
+
+.list-tools { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.list-tools .btn { flex: none; }
+
+/* Selection mode */
+.selectable { display: grid; grid-template-columns: auto 1fr; align-items: stretch; }
+.select-box { display: grid; place-items: center; width: 48px; cursor: pointer; }
+.select-box input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.select-box .check-box { margin: 0; }
+.select-box input:checked + .check-box { background: var(--accent); border-color: var(--accent); }
+.select-box input:checked + .check-box .icon { opacity: 1; transform: none; }
+.select-box input:focus-visible + .check-box { outline: 3px solid var(--accent-2); outline-offset: 2px; }
+.is-selected { border-color: var(--accent) !important; background: color-mix(in srgb, var(--accent) 5%, var(--card)) !important; }
+
+.select-bar {
+  position: fixed;
+  left: 0; right: 0;
+  bottom: calc(var(--tabbar-h) + var(--safe-bottom) + 10px);
+  z-index: 16;
+  max-width: var(--page-w);
+  margin: 0 auto;
+  padding: 0 max(12px, env(safe-area-inset-left));
+}
+.select-bar-inner {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 18px;
+  background: var(--ink);
+  color: #fff;
+  box-shadow: 0 10px 30px rgba(28, 26, 31, 0.3);
+}
+.select-bar-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-weight: 600; padding-left: 6px; }
+.select-bar-actions { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; }
+.select-bar .btn { background: rgba(255, 255, 255, 0.12); border-color: transparent; color: #fff; padding: 0 8px; font-size: 15px; }
+.select-bar .btn:disabled { opacity: 0.4; }
+.select-bar .btn-danger-ghost { color: #ffb4ab; }
+.select-bar .btn-link { background: none; min-width: 44px; }
+
+/* Desktop share: text you can always see, copy or download */
+.share-text {
+  width: 100%;
+  min-height: 220px;
+  max-height: 50vh;
+  font: 400 15px/1.45 var(--mono);
+  white-space: pre;
+}
+.dialog-wide { width: min(94vw, 620px); }
+
+.jump .chip .dot { width: 9px; height: 9px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.select-content { min-width: 0; padding: 12px 12px 12px 0; cursor: pointer; display: grid; gap: 3px; }
+.settled .reveal { animation: none; }
+/* Room for the selection bar, which is taller than the Add button. */
+body.has-tabbar .page:has(.select-bar) { padding-bottom: calc(var(--tabbar-h) + var(--safe-bottom) + 190px); }

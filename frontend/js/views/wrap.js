@@ -5,7 +5,7 @@ import { archivedBanner, setArchived } from "../components.js";
 
 const HIDE_KEY = "wrap.hideDone";
 const LAST_KEY = "wrap.occasion";
-const WRAPPABLE = new Set(["ordered", "delivered", "wrapped", "given"]);
+const WRAPPABLE = new Set(["ordered", "reorder", "delivered", "wrapped", "given"]);
 const DONE = new Set(["wrapped", "given"]);
 
 export async function render(main, ctx) {
@@ -143,6 +143,7 @@ export async function render(main, ctx) {
           h(`span.check-sub#wd-${g.id}`,
             g.hiding_place ? h("span.hidden-at", icon("pin"), g.hiding_place) : null,
             g.status === "ordered" && h("span.not-arrived", "Not delivered yet"),
+            g.status === "reorder" && h("span.not-arrived", "Being reordered"),
             given && h("span", STATUS_LABEL.given)))));
   }
 

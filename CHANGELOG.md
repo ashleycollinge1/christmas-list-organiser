@@ -2,6 +2,64 @@
 
 Each release's section is published as its GitHub Release notes. **Upgrade steps** always come first. Releases are cumulative, so you can upgrade straight from any older version. If you skip versions, follow every skipped version's upgrade steps, oldest first.
 
+## v0.4.0
+
+### Upgrade steps
+
+Same routine as before: new compose file, then pull and start.
+
+1. Replace `docker-compose.yml` with the new one. It's attached to this release, or download it:
+   ```bash
+   curl -fsSLO https://raw.githubusercontent.com/ashleycollinge1/christmas-list-organiser/stable/docker-compose.yml
+   ```
+   Your `.env` stays as it is.
+2. Pull and start:
+   ```bash
+   docker compose pull
+   docker compose up -d
+   ```
+   The `backup` service first writes `backups/christmas-<date>_before-v0.4.0.dump`, kept permanently, then `web` starts and migrates.
+3. Check `docker compose ps`: `db`, `backup` and `web` should all be `healthy`.
+
+There are no manual steps and no new settings.
+
+### Database migration (0003 → 0004)
+
+The migration adds **Reorder** to the list of allowed gift statuses. It replaces the status check with a wider one in a single transaction. No data is touched.
+
+This was rehearsed by upgrading the released v0.3.0 stack, with data, using the commands above. Every table came through identical. The rollback below was also rehearsed, and restored the v0.3.0 state exactly.
+
+### Rolling back
+
+```bash
+docker compose stop web
+docker compose exec backup restore-backup christmas-<date>_before-v0.4.0.dump   # your file's name from ./backups
+curl -fsSL https://raw.githubusercontent.com/ashleycollinge1/christmas-list-organiser/stable/deploy/compose/docker-compose.v0.3.0.yml -o docker-compose.yml
+docker compose up -d
+```
+
+Anything changed since the upgrade is lost, but `restore-backup` first saves it as `christmas-<date>_before-restore.dump`.
+
+### What's new
+
+- **Search.** A search box on your wish list (it also finds archived ideas), on each person's page, on each occasion page (across everyone's names and gifts), and on People. It matches names, notes, shops, tracking numbers and hiding places as you type.
+- **Select several at once.** Tap **Select** to tick items, or use **Select all**, then:
+  - **Wish list:** Move to Anytime or an occasion, Archive or Restore, Delete.
+  - **A person's gifts:** Set status, Move to the same person in another occasion (they're added there if needed), Delete.
+
+  Deleting asks first. Every change is all or nothing.
+- **Reorder status** (purple) for a delivery that went wrong or an item that arrived damaged.
+  - Set it by holding the status pill, in the gift form, or with Set status.
+  - Tapping it moves the gift back to **Ordered** once the replacement is on its way.
+  - Reorder gifts count as spent, sort to the top of a person's list, and appear in a **Needs reordering** list at the top of the occasion page.
+- **More counts on an occasion page:** *people · to reorder · to order · awaiting · delivered · wrapped*. Delivered and Wrapped open that occasion's Wrapping checklist.
+- **Sharing on a computer.** **Share** now opens a window showing the text, with **Copy** and **Download .txt**. iPhone and iPad still use the share sheet.
+
+### Changed
+
+- The status picker in the gift form is now two rows of three, to fit Reorder.
+- The Wrapping checklist lists Reorder gifts as *Being reordered*.
+
 ## v0.3.0
 
 ### Upgrade steps
