@@ -30,7 +30,10 @@ STATUS_ORDERED = "ordered"
 STATUS_DELIVERED = "delivered"
 STATUS_WRAPPED = "wrapped"
 STATUS_GIVEN = "given"
-STATUSES = (STATUS_IDEA, STATUS_ORDERED, STATUS_DELIVERED, STATUS_WRAPPED, STATUS_GIVEN)
+# Off the main path: something went wrong with the order (lost, damaged…). Counts as spent.
+STATUS_REORDER = "reorder"
+# Sort order: problems (reorder) first, then the usual path.
+STATUSES = (STATUS_REORDER, STATUS_IDEA, STATUS_ORDERED, STATUS_DELIVERED, STATUS_WRAPPED, STATUS_GIVEN)
 
 PRIORITY_HIGH = 1
 PRIORITY_MEDIUM = 2
@@ -265,7 +268,7 @@ class Gift(Base):
         CheckConstraint("my_share_pence IS NULL OR my_share_pence >= 0", name="ck_gift_share"),
         CheckConstraint("priority BETWEEN 1 AND 3", name="ck_gift_priority"),
         CheckConstraint(
-            "status IN ('idea','ordered','delivered','wrapped','given')",
+            "status IN ('idea','ordered','delivered','wrapped','given','reorder')",
             name="ck_gift_status",
         ),
     )

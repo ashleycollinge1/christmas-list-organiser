@@ -1,7 +1,7 @@
 // Your own wish list: sheet, rows, sharing and the occasion-page card.
 
 import { api } from "./api.js";
-import { h, icon, toast, confirmDialog, segmented, radioValue, copyText } from "./dom.js";
+import { h, icon, toast, confirmDialog, segmented, radioValue, copyText, dialog } from "./dom.js";
 import { openSheet, field, moneyInputEl } from "./sheet.js";
 import { money, parseMoney, moneyInput } from "./format.js";
 import { linkChip } from "./components.js";
@@ -151,7 +151,9 @@ export function shareText(name, title, wishes, notes) {
 export async function shareWishes(name, title, wishes, notes) {
   if (!wishes.length) return toast("Nothing to share yet", "error");
   const text = shareText(name, title, wishes, notes);
-  if (navigator.share) {
+  // Phones and tablets: the system share sheet. Computers: show the text, with Copy and Download.
+  const touch = window.matchMedia("(pointer: coarse)").matches;
+  if (touch && navigator.share) {
     try {
       await navigator.share({ title: `${name}'s wish list`, text });
       return;
@@ -159,7 +161,38 @@ export async function shareWishes(name, title, wishes, notes) {
       if (err.name === "AbortError") return;
     }
   }
-  copyText(text, "Wish list copied, ready to paste");
+  showShareText(text, title ? `${name}'s wish list: ${title}` : `${name}'s wish list`);
+}
+
+function downloadText(text, filename) {
+  const url = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
+  const a = h("a", { href: url, download: filename, hidden: true });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** A window showing the plain text, always readable and selectable even if copying is blocked. */
+async function showShareText(text, title) {
+  const area = h("textarea.input.share-text", { readonly: true, "aria-label": "Wish list text", rows: 12 });
+  area.value = text;
+  const filename = `${title.replace(/[^\w\s-]+/g, "").trim().replace(/\s+/g, "-").toLowerCase() || "wish-list"}.txt`;
+  const pending = dialog({
+    title: "Share wish list",
+    body: h("div.stack", h("p.muted", "Copy this into an email or message, or download it."), area),
+    actions: [
+      { label: "Close", value: null },
+      { label: "Download .txt", value: "download" },
+      { label: "Copy", value: "copy", primary: true },
+    ],
+  });
+  document.querySelector("dialog.dialog[open]")?.classList.add("dialog-wide");
+  area.focus();
+  area.select();
+  const choice = await pending;
+  if (choice === "copy") copyText(text, "Wish list copied, ready to paste");
+  if (choice === "download") downloadText(text, filename);
 }
 
 /** Card on an occasion page: your wishes for it. */

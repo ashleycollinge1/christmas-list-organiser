@@ -108,6 +108,8 @@ const ICONS = {
   archive: "M3 4h18v4H3zM5 8v12h14V8M10 12h4",
   note: "M5 4h14v16H5zM8 9h8M8 13h8M8 17h5",
   more: "M5 12h.01M12 12h.01M19 12h.01",
+  search: "m20 20-4.5-4.5M10.5 17a6.5 6.5 0 1 1 0-13 6.5 6.5 0 0 1 0 13z",
+  download: "M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14",
 };
 
 export function icon(name, label) {

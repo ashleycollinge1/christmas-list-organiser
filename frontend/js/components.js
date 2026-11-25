@@ -175,7 +175,7 @@ export function openGiftSheet({ recipient, gift, readOnly = false, onSaved }) {
           placeholder: "e.g. Lego Botanicals orchid", value: g.description ?? "",
         })),
         h("div.field", h("span.label", "Status"),
-          segmented("status", STATUSES.map((s) => ({ ...s, dot: true, className: `status-${s.value}` })), g.status, { label: "Status" })),
+          h("div.seg-status", segmented("status", STATUSES.map((s) => ({ ...s, dot: true, className: `status-${s.value}` })), g.status, { label: "Status" }))),
         h("div.field-row",
           field("Price", moneyInputEl("price", moneyInput(g.price_pence)), { optional: true }),
           field("Qty", textInput("quantity", g.quantity ?? 1, { inputmode: "numeric", pattern: "[0-9]*", maxlength: 2 }), { className: "field-qty" })),
@@ -659,5 +659,39 @@ export function archivedBanner(occasion, onUnarchive) {
     h("p", h("strong", occasion.name), " is archived and read-only."),
     occasion.can_manage && onUnarchive && h("button.btn.btn-sm", { type: "button", onclick: onUnarchive }, "Unarchive"));
 }
+
+/** Bulk actions for gifts (status, move, delete). Each returns true if something changed. */
+export const giftBulk = {
+  async status(ids) {
+    const value = await actionSheet({
+      title: `${ids.length} gift${ids.length === 1 ? "" : "s"}`, message: "Set status",
+      actions: STATUSES.map((s) => ({ label: s.label, value: s.value, dot: true, className: `status-${s.value}` })),
+    });
+    if (!value) return false;
+    await api("/api/gifts/bulk", { method: "POST", body: { ids, action: "status", status: value } });
+    toast(`${ids.length} set to ${STATUS_LABEL[value]}`);
+    return true;
+  },
+  async move(ids, fromOccasion, personName) {
+    const { occasions } = await api("/api/occasions");
+    const options = occasions.filter((o) => !o.is_archived && o.id !== fromOccasion.id);
+    if (!options.length) { toast("There's no other active occasion to move them to", "error"); return false; }
+    const target = await actionSheet({
+      title: `Move ${ids.length} gift${ids.length === 1 ? "" : "s"}`,
+      message: `To ${personName} in…`,
+      actions: options.map((o) => ({ label: o.name, value: o })),
+    });
+    if (!target) return false;
+    await api("/api/gifts/bulk", { method: "POST", body: { ids, action: "move", occasion_id: target.id } });
+    toast(`Moved to ${target.name}`);
+    return true;
+  },
+  async delete(ids) {
+    if (!(await confirmDialog(`Delete ${ids.length} gift${ids.length === 1 ? "" : "s"}?`, "They'll be removed for good."))) return false;
+    await api("/api/gifts/bulk", { method: "POST", body: { ids, action: "delete" } });
+    toast(`${ids.length} deleted`);
+    return true;
+  },
+};
 
 export { PRIORITY_LABEL };

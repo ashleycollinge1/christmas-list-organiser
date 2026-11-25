@@ -3,8 +3,10 @@ import { h, icon, reveal, clear, skeletonLines } from "../dom.js";
 import { money } from "../format.js";
 import {
   meter, budgetLine, statusPill, changeStatus, giftMeta, trackingChip, deliveryChip, linkChip, hidingChip,
-  openGiftSheet, openRecipientSheet, archivedBanner, setArchived,
+  openGiftSheet, openRecipientSheet, archivedBanner, setArchived, giftBulk, statusBadge,
 } from "../components.js";
+import { searchBox, searchSummary, matches, createSelection, selectRow, selectToggle, selectBar } from "../listtools.js";
+import { toast } from "../dom.js";
 
 export async function render(main, ctx) {
   const id = Number(ctx.params[0]);
@@ -14,6 +16,8 @@ export async function render(main, ctx) {
 
   let r;
   let occasion;
+  const search = { query: "" };
+  const sel = createSelection();
   async function load() {
     const res = await api(`/api/recipients/${id}`);
     r = res.recipient;
@@ -56,21 +60,43 @@ export async function render(main, ctx) {
 
     const list = h("section.section", { "aria-labelledby": "gifts-h" },
       h("h2.section-title#gifts-h", "Gifts", t.gift_count > 0 && h("span.count-badge", String(t.gift_count))));
+    const shown = r.gifts.filter((g) => matches(search.query, g.description, g.notes, g.retailer, g.tracking_number,
+      g.hiding_place, g.buyer?.name, g.status));
+    if (r.gifts.length > 1) {
+      list.append(
+        searchBox(search, { placeholder: `Search ${r.name}'s gifts`, label: "Search gifts", onInput: draw }),
+        !ro && h("div.list-tools", h("span"), selectToggle(sel, { onChange: draw })),
+        searchSummary(search, shown.length, r.gifts.length, "gift"));
+    }
     if (!r.gifts.length) {
       list.append(h("div.empty",
         h("span.empty-star", { "aria-hidden": "true" }),
         h("h3", ro ? "No gifts" : `Nothing for ${r.name} yet`),
         !ro && h("p.muted", "Add ideas now and mark them ordered when you buy them.")));
     } else {
-      list.append(h("ul.gift-list", r.gifts.map((g) => giftCard(g, ro))));
+      list.append(h("ul.gift-list", shown.map((g) => (sel.active
+        ? selectRow(sel, g.id, [h("span.gift-title", g.description), giftMeta(g), statusBadge(g.status)], { className: "gift", onChange: draw })
+        : giftCard(g, ro)))));
     }
 
     const banner = occasion.is_archived && archivedBanner(occasion, async () => { await setArchived(occasion, false); load(); });
     const parts = [banner, head, budget, notes, list].filter(Boolean);
     reveal(parts);
     page.append(...parts);
+    queueMicrotask(() => page.classList.add("settled"));
 
-    if (!ro) {
+    const run = (fn) => async (ids) => {
+      try {
+        if (await fn(ids)) { sel.active = false; sel.ids.clear(); await load(); }
+      } catch (err) { toast(err.message, "error"); }
+    };
+    if (sel.active) {
+      page.append(selectBar(sel, shown.map((g) => g.id), [
+        { label: "Status…", run: run((ids) => giftBulk.status(ids)) },
+        { label: "Move…", run: run((ids) => giftBulk.move(ids, occasion, r.name)) },
+        { label: "Delete", danger: true, run: run((ids) => giftBulk.delete(ids)) },
+      ], { onChange: draw }));
+    } else if (!ro) {
       page.append(h("div.fab-wrap", h("button.btn.btn-primary.fab", {
         type: "button",
         onclick: () => openGiftSheet({ recipient: r, onSaved: load }),

@@ -26,15 +26,20 @@ export function moneyInput(pence) {
 export const STATUSES = [
   { value: "idea", label: "Idea" },
   { value: "ordered", label: "Ordered" },
+  { value: "reorder", label: "Reorder" },
   { value: "delivered", label: "Delivered" },
   { value: "wrapped", label: "Wrapped" },
   { value: "given", label: "Given" },
 ];
 export const STATUS_LABEL = Object.fromEntries(STATUSES.map((s) => [s.value, s.label]));
 
+// The usual path; "reorder" is a detour that goes back to "ordered".
+const FLOW = ["idea", "ordered", "delivered", "wrapped", "given"];
+
 export function nextStatus(status) {
-  const i = STATUSES.findIndex((s) => s.value === status);
-  return i >= 0 && i < STATUSES.length - 1 ? STATUSES[i + 1].value : null;
+  if (status === "reorder") return "ordered";
+  const i = FLOW.indexOf(status);
+  return i >= 0 && i < FLOW.length - 1 ? FLOW[i + 1] : null;
 }
 
 export const PRIORITIES = [

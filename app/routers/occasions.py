@@ -23,6 +23,7 @@ from ..models import (
     PERSON_ME,
     STATUS_IDEA,
     STATUS_ORDERED,
+    STATUS_REORDER,
     Category,
     Gift,
     Occasion,
@@ -204,7 +205,7 @@ def overview(occasion_id: int, user: User = Depends(current_user), db: Session =
     }
     groups[None] = {"category": None, "totals": Totals(), "recipients": []}
     occasion_totals = Totals()
-    to_order, awaiting = [], []
+    to_order, awaiting, reorder = [], [], []
 
     for r in entries:
         rt = Totals(budget=r.budget_pence).add_gifts(r.gifts)
@@ -219,6 +220,8 @@ def overview(occasion_id: int, user: User = Depends(current_user), db: Session =
                 to_order.append(row)
             elif gift.status == STATUS_ORDERED:
                 awaiting.append(row)
+            elif gift.status == STATUS_REORDER:
+                reorder.append(row)
 
     to_order.sort(key=lambda x: (x["priority"], x["recipient_name"].lower(), x["id"]))
     awaiting.sort(key=lambda x: (x["delivery_date"] or "9999-12-31", x["recipient_name"].lower(), x["id"]))
@@ -231,6 +234,7 @@ def overview(occasion_id: int, user: User = Depends(current_user), db: Session =
         "groups": [{**g, "totals": g["totals"].to_dict(m)} for g in groups.values() if g["recipients"]],
         "to_order": to_order,
         "awaiting_delivery": awaiting,
+        "needs_reorder": sorted(reorder, key=lambda x: (x["recipient_name"].lower(), x["id"])),
         "my_wishes": occasion_wishes(db, user, o.id),
     }
     if can_manage(o, user):

@@ -328,3 +328,60 @@ def delete_gift(gift_id: int, user: User = Depends(current_user), db: Session = 
     db.commit()
     db.refresh(r)
     return {"ok": True, "recipient": recipient_out(r, user, margin(db), with_gifts=False)}
+
+
+# --------------------------------------------------------------------------- bulk
+
+
+class GiftBulkIn(BaseModel):
+    ids: list[int] = Field(min_length=1, max_length=500)
+    action: str = Field(pattern="^(status|move|delete)$")
+    status: str | None = None
+    occasion_id: int | None = None  # move: the same person's entry in this occasion
+
+
+def _target_entry(db: Session, user: User, source: Recipient, occasion_id: int) -> Recipient:
+    """The same person's entry in another occasion, created if they aren't in it yet (owner only)."""
+    target_occ = load_occasion(db, user, occasion_id, write=True)
+    entry = db.scalar(
+        select(Recipient).where(Recipient.occasion_id == target_occ.id, Recipient.person_id == source.person_id)
+    )
+    if entry is not None:
+        if db.scalar(select(Recipient.id).where(Recipient.id == entry.id, visible_recipient(user))) is None:
+            raise HTTPException(404, "Recipient not found.")
+        return entry
+    if source.owner_id != user.id:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, f"{source.name} isn't in {target_occ.name}, and only their owner can add them."
+        )
+    entry = Recipient(occasion_id=target_occ.id, owner_id=user.id, person=source.person)
+    entry.mirror_person()
+    db.add(entry)
+    db.flush()
+    return entry
+
+
+@router.post("/gifts/bulk")
+def bulk_gifts(body: GiftBulkIn, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    """Apply one action to several gifts, all or nothing."""
+    gifts = [load_gift(db, user, gid, write=True) for gid in dict.fromkeys(body.ids)]
+    if body.action == "status":
+        if body.status not in STATUSES:
+            raise unprocessable(f"Status must be one of: {', '.join(STATUSES)}.")
+        for g in gifts:
+            g.status = body.status
+    elif body.action == "move":
+        if body.occasion_id is None:
+            raise unprocessable("Choose where to move them.")
+        for g in gifts:
+            if g.recipient.occasion_id == body.occasion_id:
+                continue
+            target = _target_entry(db, user, g.recipient, body.occasion_id)
+            g.recipient_id = target.id
+            if g.buyer_id is not None and g.buyer_id not in _member_ids(target):
+                g.buyer_id = user.id
+    else:
+        for g in gifts:
+            db.delete(g)
+    db.commit()
+    return {"ok": True, "count": len(gifts)}
