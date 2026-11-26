@@ -90,3 +90,31 @@ def test_wish_validation(api):
                 {"description": "x", "quantity": 0}):  # fmt: skip
         assert api.post("/api/wishes", json=bad).status_code == 422
     assert api.patch("/api/wishes/999", json={"description": "x"}).status_code == 404
+
+
+def test_new_occasion_for_me_moves_chosen_wishes(api, second):
+    keep, take1, take2 = (
+        api.post("/api/wishes", json={"description": d}).json()["wish"]["id"] for d in ("Keep", "Take", "Also")
+    )
+    o = api.post("/api/occasions", json={"kind": "birthday", "name": "My birthday", "include_me": True,
+                                         "wish_ids": [take1, take2]}).json()["occasion"]  # fmt: skip
+    mine = api.get(f"/api/occasions/{o['id']}/overview").json()["my_wishes"]
+    assert sorted(w["description"] for w in mine["items"]) == ["Also", "Take"] and mine["me"]["name"] == "admin"
+    left = [w["description"] for w in api.get("/api/wishes").json()["wishes"] if w["occasion"] is None]
+    assert left == ["Keep"] and keep
+
+    # Me with no wishes yet still sets up your wish list, so the page can show it.
+    fresh = second.post("/api/occasions", json={"name": "Sam's birthday", "include_me": True}).json()["occasion"]
+    assert second.get(f"/api/occasions/{fresh['id']}/overview").json()["my_wishes"]["count"] == 0
+
+    # Someone else's wishes can't be pulled in, and nothing is created when that fails.
+    before = len(second.get("/api/occasions").json()["occasions"])
+    r = second.post("/api/occasions", json={"name": "x", "include_me": True, "wish_ids": [keep]})
+    assert r.status_code == 422 and len(second.get("/api/occasions").json()["occasions"]) == before
+
+
+def test_home_list_includes_my_wish_summary(api):
+    o = api.post("/api/occasions", json={"kind": "birthday", "name": "Mine", "include_me": True}).json()["occasion"]
+    api.post("/api/wishes", json={"description": "A", "price_pence": 1500, "occasion_id": o["id"]})
+    row = next(x for x in api.get("/api/occasions").json()["occasions"] if x["id"] == o["id"])
+    assert row["people"] == 0 and row["my_wishes"] == {"count": 1, "total_pence": 1500, "unpriced": 0}

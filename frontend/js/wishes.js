@@ -195,6 +195,26 @@ async function showShareText(text, title) {
   if (choice === "download") downloadText(text, filename);
 }
 
+/** An occasion that's just for you: the full wish list, front and centre. */
+export function myWishesSection(occasion, summary, { onChanged }) {
+  const name = summary.me?.name || "My";
+  return h("section.section.my-occasion", { "aria-labelledby": "my-wishes-h" },
+    h("div.group-head",
+      h("h2.section-title#my-wishes-h", "My wish list"),
+      h("span.row.row-tight",
+        h("span.group-total", summary.count ? summaryText(summary) : ""),
+        summary.count > 0 && h("button.btn.btn-icon.btn-ghost", {
+          type: "button", "aria-label": `Share my ${occasion.name} list`,
+          onclick: () => shareWishes(name, occasion.name, summary.items, summary.me?.notes),
+        }, icon("share")))),
+    summary.items.length
+      ? h("ul.wish-list", summary.items.map((w) => wishRow(w, onChanged)))
+      : h("div.empty",
+        h("span.empty-star", { "aria-hidden": "true" }),
+        h("h3", "What would you like?"),
+        h("p.muted", occasion.is_archived ? "Nothing was listed." : "Add things you'd like, or move them here from your wish list.")));
+}
+
 /** Card on an occasion page: your wishes for it. */
 export function myWishesCard(occasion, summary, { onChanged }) {
   const card = h("section.wish-card", { "aria-labelledby": "my-wishes-h" },
@@ -203,7 +223,7 @@ export function myWishesCard(occasion, summary, { onChanged }) {
         h("h2.wish-card-title#my-wishes-h", icon("gift"), "My wish list"),
         h("p.muted.small", summaryText(summary))),
       h("a.btn.btn-sm", { href: `#/me?o=${occasion.id}` }, "See all")),
-    summary.items.length > 0 && h("ul.wish-mini", summary.items.map((w) =>
+    summary.items.length > 0 && h("ul.wish-mini", summary.items.slice(0, 3).map((w) =>
       h("li", h("span", w.description), wishPrice(w) && h("span.muted", wishPrice(w))))),
     !occasion.is_archived && h("button.btn.btn-block", {
       type: "button",

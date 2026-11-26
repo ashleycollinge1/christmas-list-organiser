@@ -44,7 +44,7 @@ from .lists import (
     visible_occasion,
     visible_recipient,
 )
-from .wishes import occasion_wishes  # noqa: E402
+from .wishes import ensure_me, occasion_wishes, summarise  # noqa: E402
 
 router = APIRouter(prefix="/api/occasions", tags=["occasions"])
 
@@ -62,6 +62,9 @@ class OccasionCreateIn(OccasionIn):
     copy_budgets: bool = True
     copy_sharing: bool = True
     copy_gifts: bool = False
+    # "Me": the occasion is (also) for you. Your wishes with these ids move into it.
+    include_me: bool = False
+    wish_ids: list[int] = Field(default_factory=list, max_length=500)
 
 
 class EntryIn(BaseModel):
@@ -120,13 +123,26 @@ def _sort_key(o: Occasion):
 def list_occasions(user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
     m = margin(db)
     occasions = sorted(db.scalars(select(Occasion).where(visible_occasion(user))).all(), key=_sort_key)
+    # Your own (non-archived) wishes per occasion, for occasions that are just for you.
+    my_wishes: dict[int, list[Wish]] = {}
+    for w in db.scalars(
+        select(Wish).where(Wish.owner_id == user.id, Wish.occasion_id.is_not(None), Wish.archived_at.is_(None))
+    ):
+        my_wishes.setdefault(w.occasion_id, []).append(w)
     out = []
     for o in occasions:
         entries = _visible_entries(db, user, o.id)
         totals = Totals()
         for r in entries:
             totals.merge(Totals(budget=r.budget_pence).add_gifts(r.gifts))
-        out.append({**occasion_out(o, user), "people": len(entries), "totals": totals.to_dict(m)})
+        out.append(
+            {
+                **occasion_out(o, user),
+                "people": len(entries),
+                "totals": totals.to_dict(m),
+                "my_wishes": summarise(my_wishes.get(o.id, [])),
+            }
+        )
     return {"occasions": out}
 
 
@@ -185,6 +201,13 @@ def create_occasion(body: OccasionCreateIn, user: User = Depends(current_user), 
         raise unprocessable("Add your own wishes from your wish list rather than as someone you buy for.")
     for pid in ids:
         db.add(_copy_entry(sources.get(pid), o, people[pid], body))
+    if body.include_me or body.wish_ids:
+        ensure_me(db, user)
+        wishes = db.scalars(select(Wish).where(Wish.id.in_(body.wish_ids), Wish.owner_id == user.id)).all()
+        if len(wishes) != len(set(body.wish_ids)):
+            raise unprocessable("Some of those wishes aren't yours or no longer exist.")
+        for w in wishes:
+            w.occasion_id = o.id
     db.commit()
     db.refresh(o)
     return {"occasion": occasion_out(o, user)}

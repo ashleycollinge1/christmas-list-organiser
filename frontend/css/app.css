@@ -1339,3 +1339,8 @@ select.input {
 .settled .reveal { animation: none; }
 /* Room for the selection bar, which is taller than the Add button. */
 body.has-tabbar .page:has(.select-bar) { padding-bottom: calc(var(--tabbar-h) + var(--safe-bottom) + 190px); }
+
+/* v0.5.0: Me in occasions */
+.me-pick { border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+.my-occasion { margin-top: 8px; }
+.btn-text { display: inline-flex; align-items: center; min-height: 44px; padding: 0 4px; border: 0; background: none; color: var(--accent); font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }

@@ -2,6 +2,7 @@ import { api } from "../api.js";
 import { h, icon, reveal, clear, skeletonLines } from "../dom.js";
 import { money, KIND_LABEL, occasionWhen } from "../format.js";
 import { meter, budgetLine, statusDots, openNewOccasionSheet } from "../components.js";
+import { summaryText } from "../wishes.js";
 
 export async function render(main, ctx) {
   const page = h("div.page.home");
@@ -39,13 +40,22 @@ export async function render(main, ctx) {
 
   page.append(h("div.fab-wrap", h("button.btn.btn-primary.fab", {
     type: "button",
-    onclick: () => openNewOccasionSheet({ onSaved: (o) => ctx.navigate(`/o/${o.id}`) }),
+    onclick: () => openNewOccasionSheet({ me: ctx.session.user, onSaved: (o) => ctx.navigate(`/o/${o.id}`) }),
   }, icon("plus"), "New occasion")));
 }
 
 function card(o) {
   const t = o.totals;
   const when = occasionWhen(o.date);
+  // Just for you: show your wish list instead of an empty budget.
+  if (o.people === 0 && o.my_wishes?.count > 0) {
+    return h("li", h(`a.occasion-card.kind-${o.kind}`, { href: `#/o/${o.id}` },
+      h("div.occasion-top",
+        h("span.kind-tag", KIND_LABEL[o.kind]),
+        when && h(`span.when${when.past ? ".is-past" : ""}`, { title: when.date }, when.when)),
+      h("h2.occasion-name", o.name),
+      h("div.person-top", h("span.person-money", "My wish list"), h("span.muted.small", summaryText(o.my_wishes)))));
+  }
   return h("li", h(`a.occasion-card.kind-${o.kind}`, { href: `#/o/${o.id}` },
     h("div.occasion-top",
       h("span.kind-tag", KIND_LABEL[o.kind]),
